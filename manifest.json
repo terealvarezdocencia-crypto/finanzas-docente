@@ -1,0 +1,19 @@
+{
+  "name": "Finanzas Docente",
+  "short_name": "Finanzas",
+  "description": "Control de finanzas personales, familiares y farmacia",
+  "start_url": "index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fcf7fa",
+  "theme_color": "#E0BBE4",
+  "scope": ".",
+  "lang": "es-MX",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "192x192", "type": "image/svg+xml" },
+    { "src": "icon.svg", "sizes": "512x512", "type": "image/svg+xml" }
+  ],
+  "categories": ["finance", "productivity"],
+  "prefer_related_applications": false
+}
