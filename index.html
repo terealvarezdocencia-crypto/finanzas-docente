@@ -183,11 +183,8 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
 
 <div class="navbar">
   <h1>&#x1F4B0; Finanzas</h1>
-  <div class="nav-tabs">
-    <button class="nav-tab active" data-module="personal">Personal</button>
-    <button class="nav-tab" data-module="family">Familiar</button>
-    <button class="nav-tab" data-module="farmacia">Farmacia</button>
-    <button class="nav-tab" data-module="farmasi">Farmasi</button>
+  <div class="nav-tabs" id="nav-tabs">
+    <!-- rendered by App.renderNavTabs() -->
   </div>
 </div>
 
@@ -253,6 +250,7 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
       <button class="btn btn-w btn-sm" onclick="document.getElementById('excel-input').click()">&#x1F4C1; Importar Excel</button>
       <input type="file" id="excel-input" accept=".xlsx,.xls" style="display:none" onchange="App.importExcel(event)">
       <button class="btn btn-d btn-sm" onclick="App.resetData()">&#x26A0; Reiniciar datos</button>
+      <button class="btn btn-d btn-sm" onclick="App.removeCurrentModule()">❌ Eliminar módulo actual</button>
     </div>
   </div>
 </div>
@@ -594,6 +592,7 @@ const DB = {
     _data: null, _key: 'finanzas_app_v6',
     get defaults() {
         const mods = {};
+        const list = [];
         for (const k of Object.keys(MOD_DEFAULTS)) {
             const d = MOD_DEFAULTS[k];
             mods[k] = {
@@ -604,12 +603,28 @@ const DB = {
                 budgets: {},
                 weeklyBudgets: {},
             };
+            list.push({ id: k, name: d.name, icon: d.icon });
         }
-        return { currentModule: 'personal', budgetPeriod: 'monthly', modules: mods };
+        return { currentModule: 'personal', budgetPeriod: 'monthly', modules: mods, modulesList: list };
     },
     load() {
         if (this._data) return this._data;
-        try { const r = localStorage.getItem(this._key); if (r) { this._data = JSON.parse(r); const d = this.defaults; for (const k of Object.keys(d.modules)) { if (!this._data.modules) { this._data.modules = d.modules; break; } if (!this._data.modules[k]) this._data.modules[k] = JSON.parse(JSON.stringify(d.modules[k])); } if (!this._data.budgetPeriod) this._data.budgetPeriod = 'monthly'; return this._data; } } catch (e) { console.warn(e); }
+        try {
+            const r = localStorage.getItem(this._key);
+            if (r) {
+                this._data = JSON.parse(r);
+                const d = this.defaults;
+                if (!this._data.modulesList) {
+                    this._data.modulesList = d.modulesList;
+                }
+                for (const k of Object.keys(d.modules)) {
+                    if (!this._data.modules) { this._data.modules = d.modules; break; }
+                    if (!this._data.modules[k]) this._data.modules[k] = JSON.parse(JSON.stringify(d.modules[k]));
+                }
+                if (!this._data.budgetPeriod) this._data.budgetPeriod = 'monthly';
+                return this._data;
+            }
+        } catch (e) { console.warn(e); }
         this._data = JSON.parse(JSON.stringify(this.defaults)); this.save(); return this._data;
     },
     save() { try { localStorage.setItem(this._key, JSON.stringify(this._data)); } catch (e) { console.error(e); } },
@@ -634,7 +649,7 @@ const U = {
     weekKey(d) { const dt=this.parseDate(d); const y=dt.getFullYear(); const m=dt.getMonth()+1; const day=dt.getDate(); const w=Math.ceil(day/7); return y+'-'+String(m).padStart(2,'0')+'-W'+w; },
     monthName(d) { const dt=this.parseDate(d); return dt.toLocaleDateString('es-MX',{month:'long',year:'numeric'}); },
     daysBetween(a,b) { return Math.ceil((this.parseDate(b)-this.parseDate(a))/86400000); },
-    modName(m) { const mo=MOD_DEFAULTS[m]; return mo?mo.name:m; },
+    modName(m) { const mo=MOD_DEFAULTS[m]; if (mo) return mo.name; const ml=DB.get('modulesList')||[]; const found=ml.find(x=>x.id===m); return found?found.name:m; },
     mod(key) { return DB.moduleData(App.currentModule, key); },
     modSet(key, val) { DB.setModuleData(App.currentModule, key, val); },
     modAdd(key, item) { return DB.addModule(App.currentModule, key, item); },
@@ -810,6 +825,7 @@ const App = {
     init() {
         DB.load();
         this.currentModule = DB.get('currentModule') || 'personal';
+        this.renderNavTabs();
         this.bindEvents();
         if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
         const v = document.getElementById('verify-modal');
@@ -821,8 +837,64 @@ const App = {
         this.switchModule(this.currentModule);
     },
 
+    renderNavTabs() {
+        const container = document.getElementById('nav-tabs');
+        const list = DB.get('modulesList') || [];
+        container.innerHTML = list.map(m =>
+            '<button class="nav-tab'+(m.id===this.currentModule?' active':'')+'" data-module="'+m.id+'">'+(m.icon||'📁')+' '+m.name+'</button>'
+        ).join('') +
+        '<button class="nav-tab" id="btn-add-module" style="font-size:1.1rem;padding:0 10px;opacity:.6" title="Agregar módulo">➕</button>';
+        container.querySelectorAll('.nav-tab:not(#btn-add-module)').forEach(tab =>
+            tab.addEventListener('click', ()=>this.switchModule(tab.dataset.module))
+        );
+        document.getElementById('btn-add-module').addEventListener('click', ()=>this.promptAddModule());
+    },
+
+    switchModule(mod) {
+        this.currentModule = mod;
+        DB.set('currentModule', mod);
+        this.renderNavTabs();
+        const ml = (DB.get('modulesList')||[]).find(m=>m.id===mod);
+        document.getElementById('module-indicator').textContent = ml ? (ml.icon||'📁')+' '+ml.name : mod;
+        this.switchSub('dashboard');
+    },
+
+    promptAddModule() {
+        const name = prompt('Nombre del nuevo módulo:', '');
+        if (!name || !name.trim()) return;
+        const id = name.trim().toLowerCase().replace(/[^a-z0-9]/g,'_')+'_'+Date.now().toString(36);
+        const icon = prompt('Icono (emojí, ej: 🏢, 🎓, 🏠):', '📁');
+        const ml = DB.get('modulesList') || [];
+        ml.push({ id, name: name.trim(), icon: icon || '📁' });
+        DB.set('modulesList', ml);
+        const d = DB.load();
+        if (!d.modules) d.modules = {};
+        d.modules[id] = { accounts: [], categories: [], transactions: [], goals: [], budgets: {}, weeklyBudgets: {} };
+        DB.save();
+        this.renderNavTabs();
+        this.switchModule(id);
+        toast('Módulo "'+name.trim()+'" creado','s');
+    },
+
+    removeCurrentModule() {
+        const ml = DB.get('modulesList') || [];
+        if (ml.length <= 1) { toast('Debe haber al menos un módulo','e'); return; }
+        const mod = this.currentModule;
+        const m = ml.find(x=>x.id===mod);
+        Confirm.show('Eliminar módulo','¿Eliminar "'+(m?m.name:mod)+'" y todos sus datos?', ok=>{
+            if (!ok) return;
+            DB.set('modulesList', ml.filter(x=>x.id!==mod));
+            const d = DB.load();
+            if (d.modules) delete d.modules[mod];
+            DB.save();
+            const first = (DB.get('modulesList')||[])[0];
+            this.renderNavTabs();
+            this.switchModule(first ? first.id : 'personal');
+            toast('Módulo eliminado','i');
+        });
+    },
+
     bindEvents() {
-        document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', ()=>this.switchModule(tab.dataset.module)));
         document.querySelectorAll('#sub-tabs .sub-tab').forEach(tab => tab.addEventListener('click', ()=>this.switchSub(tab.dataset.sub)));
         document.getElementById('tx-form').addEventListener('submit', e=>{e.preventDefault();this.saveTransaction();});
         document.getElementById('btn-cancel-tx').addEventListener('click', ()=>this.closeTxForm());
@@ -834,16 +906,6 @@ const App = {
         document.getElementById('btn-cancel-goal').addEventListener('click', ()=>this.closeGoalForm());
         document.getElementById('budget-form').addEventListener('submit', e=>{e.preventDefault();this.saveBudget();});
         document.getElementById('btn-cancel-budget').addEventListener('click', ()=>this.closeBudgetForm());
-    },
-
-    switchModule(mod) {
-        this.currentModule = mod;
-        DB.set('currentModule', mod);
-        document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-        const tab = document.querySelector('.nav-tab[data-module="'+mod+'"]');
-        if (tab) tab.classList.add('active');
-        document.getElementById('module-indicator').textContent = MOD_DEFAULTS[mod] ? MOD_DEFAULTS[mod].name : mod;
-        this.switchSub('dashboard');
     },
 
     switchSub(sub) {
@@ -925,10 +987,10 @@ const App = {
 
     renderFreedomDash() {
         const c = document.getElementById('freedom-projection-dash');
-        if (this.currentModule !== 'personal') { c.innerHTML = '<div class="empty-state"><p>Proyección disponible solo en Personal</p></div>'; return; }
-        const tx = U.mod('transactions');
         const goals = U.mod('goals');
         const fGoal = goals.find(g=>g.type==='freedom');
+        if (!fGoal) { c.innerHTML = '<div class="empty-state"><p>Crea una meta tipo "Libertad Financiera" para ver la proyección</p></div>'; return; }
+        const tx = U.mod('transactions');
         const m = U.monthYear(U.today());
         const mtx = tx.filter(t=>U.monthYear(t.date)===m);
         const mi = U.totalIncome(mtx)||1;
@@ -1530,6 +1592,23 @@ const App = {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catData), 'Categorías');
             const goalData = goals.map(g => ({Nombre:g.name,Monto_meta:g.target,Progreso:g.current,Fecha_limite:g.date,Tipo:g.type,Cuenta_id:g.accountId||''}));
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(goalData), 'Metas');
+            // Budget sheet
+            const budgets = U.mod('budgets')||{};
+            const weeklyBudgets = U.mod('weeklyBudgets')||{};
+            const budgetData = [];
+            Object.keys(budgets).forEach(k => {
+                const parts = k.split('-');
+                const catId = parts.slice(1).join('-');
+                const cat = cats.find(c=>c.id===catId);
+                budgetData.push({Periodo:parts[0],Tipo:'mensual',Rubro:cat?cat.name:catId,Limite:budgets[k]});
+            });
+            Object.keys(weeklyBudgets).forEach(k => {
+                const parts = k.split('-');
+                const catId = parts.slice(1).join('-');
+                const cat = cats.find(c=>c.id===catId);
+                budgetData.push({Periodo:parts[0],Tipo:'semanal',Rubro:cat?cat.name:catId,Limite:weeklyBudgets[k]});
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(budgetData), 'Presupuesto');
             XLSX.writeFile(wb, U.modName(this.currentModule)+'_'+U.today()+'.xlsx');
             toast('Excel exportado','s');
         } catch(err) { toast('Error al exportar: '+err.message,'e'); }
@@ -1549,7 +1628,7 @@ const App = {
                     const accounts = U.mod('accounts');
                     const goals = U.mod('goals');
                     const tx = U.mod('transactions');
-                    let impCats = 0, impAccs = 0, impGoals = 0, impTx = 0;
+                    let impCats = 0, impAccs = 0, impGoals = 0, impTx = 0, impBudgets = 0;
 
                     // Import Categorías
                     if (wb.SheetNames.includes('Categorías')) {
@@ -1587,6 +1666,26 @@ const App = {
                         U.modSet('goals', goals);
                     }
 
+                    // Import Presupuesto
+                    if (wb.SheetNames.includes('Presupuesto')) {
+                        const rows = XLSX.utils.sheet_to_json(wb.Sheets['Presupuesto']);
+                        const budgets = U.mod('budgets')||{};
+                        const weeklyBudgets = U.mod('weeklyBudgets')||{};
+                        rows.forEach(r => {
+                            if (r.Periodo && r.Limite && r.Rubro) {
+                                const cat = cats.find(c=>c.name.toLowerCase()===r.Rubro.toLowerCase());
+                                if (cat) {
+                                    const key = r.Periodo+'-'+cat.id;
+                                    if (r.Tipo==='semanal') weeklyBudgets[key] = r.Limite;
+                                    else budgets[key] = r.Limite;
+                                    impBudgets++;
+                                }
+                            }
+                        });
+                        U.modSet('budgets', budgets);
+                        U.modSet('weeklyBudgets', weeklyBudgets);
+                    }
+
                     // Import Transacciones
                     if (wb.SheetNames.includes('Transacciones')) {
                         const rows = XLSX.utils.sheet_to_json(wb.Sheets['Transacciones']);
@@ -1614,7 +1713,7 @@ const App = {
 
                     DB.save();
                     this.renderDashboard(); this.renderTransactions();
-                    toast('Importados: '+impCats+' cats, '+impAccs+' cuentas, '+impGoals+' metas, '+impTx+' transacciones','s');
+                    toast('Importados: '+impCats+' cats, '+impAccs+' cuentas, '+impGoals+' metas, '+impTx+' transacciones, '+impBudgets+' presupuestos','s');
                 } catch(err) { toast('Error al importar Excel: '+err.message,'e'); }
             };
             reader.readAsBinaryString(file);
