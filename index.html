@@ -211,6 +211,7 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
   <button class="sub-tab" data-sub="categories">Rubros</button>
   <button class="sub-tab" data-sub="budget">Presupuesto</button>
   <button class="sub-tab" data-sub="goals">Metas</button>
+  <button class="sub-tab" data-sub="analysis">📊 Análisis</button>
 </div>
 
 <!-- ===== SUB VIEWS ===== -->
@@ -311,6 +312,10 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
     <div class="card-h"><h2>Metas financieras</h2><button class="btn btn-p btn-sm" onclick="App.openGoalForm()">+ Nueva meta</button></div>
     <div class="table-wrap"><table><thead><tr><th>Meta</th><th>Tipo</th><th>Meta</th><th>Progreso</th><th>Avance</th><th>Fecha límite</th><th></th></tr></thead><tbody id="goals-list"></tbody></table></div>
   </div>
+</div>
+
+<div id="sub-analysis" class="sub-view">
+  <div id="analysis-content"></div>
 </div>
 
 </div><!-- /container -->
@@ -1503,6 +1508,172 @@ const App = {
                 +'<button class="btn btn-xs btn-o" onclick="App.openGoalForm(\''+g.id+'\')">Editar</button> '
                 +'<button class="btn btn-xs btn-d" onclick="App.deleteGoal(\''+g.id+'\')">&#10005;</button></td></tr>';
         }).join('');
+    },
+
+    renderAnalysis() {
+        const c = document.getElementById('analysis-content');
+        const tx = U.mod('transactions');
+        const accounts = U.mod('accounts');
+        const cats = U.mod('categories');
+        const goals = U.mod('goals');
+        const m = U.monthYear(U.today());
+        const mtx = tx.filter(t=>U.monthYear(t.date)===m);
+        const mi = U.totalIncome(mtx);
+        const me = U.totalExpenses(mtx);
+        const ms = U.totalSavings(mtx);
+        const sr = mi>0?(ms/mi)*100:0;
+        const netWorth = U.calcNetWorth();
+        const totalTx = tx.length;
+        const hasData = totalTx > 0;
+
+        // Generar retos dinámicos
+        const dailyChallenges = [];
+        const weeklyChallenges = [];
+        const monthlyChallenges = [];
+        if (hasData) {
+            // Daily
+            dailyChallenges.push({ text: '🤫 Hoy no hagas gastos hormiga (café, snacks, etc.)', hard: false });
+            dailyChallenges.push({ text: '📝 Anota cada gasto del día en la app', hard: false });
+            if (mi > me) dailyChallenges.push({ text: '💪 Transfiere el 10% de tus ingresos a ahorro hoy', hard: true });
+            else dailyChallenges.push({ text: '✂️ Hoy reduce UN gasto innecesario', hard: false });
+            if (ms > 0) dailyChallenges.push({ text: '🐷 Revisa tu meta de ahorro y agrega $50 simbólicos', hard: false });
+            else dailyChallenges.push({ text: '🚀 Crea tu primera meta de ahorro hoy', hard: true });
+            if (me > 0) dailyChallenges.push({ text: '📊 Revisa el reporte de gastos del día', hard: false });
+            // Weekly
+            const catExpense = cats.filter(c=>c.type==='expense');
+            const topCat = catExpense.map(c=>({cat:c, spent: mtx.filter(t=>t.categoryId===c.id&&t.type==='expense').reduce((s,t)=>s+t.amount,0)})).sort((a,b)=>b.spent-a.spent);
+            if (topCat.length && topCat[0].spent > 0) {
+                weeklyChallenges.push({ text: '🎯 Reduce gastos en "'+topCat[0].cat.name+'" en 15% esta semana', hard: true });
+            }
+            weeklyChallenges.push({ text: '🐖 Ahorra al menos el 10% de tus ingresos esta semana', hard: false });
+            if (goals.length > 0) weeklyChallenges.push({ text: '🎯 Avanza en tu meta "'+goals[0].name+'" — agrega $100 hoy', hard: false });
+            else weeklyChallenges.push({ text: '🎯 Define una meta financiera para esta quincena', hard: true });
+            weeklyChallenges.push({ text: '📉 Identifica UN gasto que puedas eliminar permanentemente', hard: true });
+            weeklyChallenges.push({ text: '💡 Prepara tu presupuesto para la próxima semana', hard: false });
+            if (sr < 10) weeklyChallenges.push({ text: '⚠️ Reto: llegar al 10% de ahorro — revisa tus suscripciones', hard: true });
+            // Monthly
+            monthlyChallenges.push({ text: '📊 Haz un corte mensual: compara gastos vs presupuesto', hard: false });
+            if (goals.length > 0) {
+                const g = goals[0];
+                const remaining = g.target - g.current;
+                const daysLeft = U.daysBetween(U.today(), g.date);
+                if (daysLeft > 0 && remaining > 0) {
+                    const needed = remaining / (daysLeft/30);
+                    monthlyChallenges.push({ text: '💰 Para "'+g.name+'": ahorra $'+Math.round(needed).toLocaleString()+'/mes para llegar a tu meta', hard: true });
+                }
+            }
+            if (sr < 20) monthlyChallenges.push({ text: '💪 Reto: alcanza 20% de tasa de ahorro este mes', hard: true });
+            else monthlyChallenges.push({ text: '🌟 Mantén tu tasa de ahorro arriba del 20%', hard: false });
+            monthlyChallenges.push({ text: '📈 Revisa y ajusta tus presupuestos para el próximo mes', hard: false });
+        }
+
+        // Consejos personalizados por meta
+        const goalAdvice = goals.map(g => {
+            const pct = g.target>0?Math.min(100,Math.round(g.current/g.target*100)):0;
+            const daysLeft = U.daysBetween(U.today(), g.date);
+            const remaining = g.target - g.current;
+            let advice = '';
+            if (pct >= 100) advice = '🎉 ¡Meta completada! Celebra tu logro.';
+            else if (daysLeft <= 0) advice = '⏰ Fecha límite vencida. Reajusta la fecha o aumenta tu ahorro mensual.';
+            else {
+                const monthlyNeeded = remaining / (daysLeft/30);
+                const monthlyIncome = mi || 1;
+                const pctOfIncome = (monthlyNeeded / monthlyIncome) * 100;
+                if (pctOfIncome > 50) advice = '⚠️ Necesitas ahorrar el ' + pctOfIncome.toFixed(0) + '% de tus ingresos mensuales. Revisa si la meta es realista o extiende la fecha.';
+                else if (pctOfIncome > 20) advice = '💪 Necesitas ahorrar ~$' + Math.round(monthlyNeeded).toLocaleString() + '/ mes (' + pctOfIncome.toFixed(0) + '% de ingresos). Es alcanzable con disciplina.';
+                else if (pctOfIncome > 0) advice = '✅ Necesitas ahorrar ~$' + Math.round(monthlyNeeded).toLocaleString() + '/ mes (' + pctOfIncome.toFixed(0) + '% de ingresos). ¡Muy accesible!';
+                else advice = '📊 Meta alcanzada, solo es cuestión de tiempo.';
+            }
+            const icons = {savings:'🐷',freedom:'🕊️',investment:'📈',debt:'💳'};
+            return { name: g.name, icon: icons[g.type]||'🎯', pct, advice, daysLeft, remaining, current: g.current, target: g.target };
+        });
+
+        // Análisis de gastos por categoría
+        const gxByCat = {};
+        mtx.filter(t=>t.type==='expense').forEach(t=>{gxByCat[t.categoryId]=(gxByCat[t.categoryId]||0)+t.amount;});
+        const sortedCats = Object.entries(gxByCat).sort((a,b)=>b[1]-a[1]);
+        const topSpend = sortedCats.slice(0,3).map(([id,amt])=>{
+            const cat = cats.find(c=>c.id===id);
+            return { name: cat?cat.name:'?', amount: amt };
+        });
+
+        // Health score
+        let score = 100;
+        if (sr < 20) score -= 15;
+        if (sr < 10) score -= 15;
+        if (me > mi) score -= 20;
+        if (goals.length === 0) score -= 10;
+        else { const avgPct = goals.reduce((s,g) => s+(g.target>0?g.current/g.target:0),0)/goals.length; if (avgPct < 0.3) score -= 10; }
+        if (totalTx < 5) score -= 10;
+        if (netWorth <= 0) score -= 15;
+        score = Math.max(0, Math.min(100, score));
+        const healthEmoji = score >= 80 ? '🌟' : score >= 50 ? '👍' : score >= 30 ? '⚠️' : '🚨';
+        const healthLabel = score >= 80 ? 'Excelente' : score >= 50 ? 'Buena' : score >= 30 ? 'Regular' : 'Crítica';
+
+        const html = `
+        <div class="stats-grid">
+          <div class="stat-c" style="border-color:#E0BBE4;background:linear-gradient(135deg,#fff,#fdf8fe)"><div class="stat-l">${healthEmoji} Salud financiera</div><div class="stat-v" style="color:#7a4a6a;font-size:2rem">${score}%</div><div class="stat-s">${healthLabel}</div></div>
+          <div class="stat-c" style="border-color:var(--mint);background:linear-gradient(135deg,#fff,#f6fff8)"><div class="stat-l">💰 Tasa de ahorro</div><div class="stat-v" style="color:var(--mint);font-size:2rem">${sr.toFixed(1)}%</div><div class="stat-s">${U.fmt(ms)} ahorrado / ${U.fmt(mi)} ingresos</div></div>
+          <div class="stat-c" style="border-color:var(--sky);background:linear-gradient(135deg,#fff,#f7fcfe)"><div class="stat-l">📊 Transacciones</div><div class="stat-v" style="color:var(--sky);font-size:2rem">${totalTx}</div><div class="stat-s">Totales registradas</div></div>
+          <div class="stat-c" style="border-color:${netWorth>=0?'var(--mint)':'var(--pink)'};background:linear-gradient(135deg,#fff,${netWorth>=0?'#f6fff8':'#fff8f7'})"><div class="stat-l">🏦 Patrimonio neto</div><div class="stat-v" style="color:${netWorth>=0?'var(--mint)':'var(--pink)'};font-size:1.6rem">${U.fmt(netWorth)}</div><div class="stat-s">${mi > me ? 'Gastas menos de lo que ganas ✅' : '⚠️ Gastas más de lo que ganas'}</div></div>
+        </div>
+
+        ${!hasData ? '<div class="card"><div class="empty-state"><p>📝 Registra transacciones para ver tu análisis financiero personalizado.</p></div></div>' : ''}
+
+        ${goalAdvice.length > 0 ? `
+        <div class="card"><div class="card-h"><h2>🎯 Consejos para tus metas</h2></div>
+        ${goalAdvice.map(g => `
+          <div class="rec-card tip" style="margin-bottom:8px">
+            <h4>${g.icon} ${g.name} — ${g.pct}% completo</h4>
+            <p>${g.advice}</p>
+            <div class="progress-bar" style="margin-top:6px"><div class="progress-fill" style="width:${g.pct}%;background:${g.pct>=100?'var(--mint)':g.pct>=50?'var(--sky)':'var(--pink)'}"></div></div>
+          </div>
+        `).join('')}</div>` : '<div class="card"><div class="card-h"><h2>🎯 Consejos para metas</h2></div><div class="empty-state"><p>Crea metas financieras para recibir consejos personalizados.</p></div></div>'}
+
+        ${topSpend.length > 0 ? `
+        <div class="card"><div class="card-h"><h2>📊 Top gastos del mes</h2></div>
+        ${topSpend.map((s,i) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0e6ec">
+            <span style="font-weight:600">${['🥇','🥈','🥉'][i]||''} ${s.name}</span>
+            <span style="font-weight:700;color:var(--pink)">${U.fmt(s.amount)}</span>
+          </div>
+        `).join('')}
+        ${sortedCats.length > 3 ? `<p class="text-muted mt-10" style="font-size:.78rem">+ ${sortedCats.length-3} categorías más</p>` : ''}
+        </div>` : ''}
+
+        ${hasData ? `
+        <div class="card"><div class="card-h"><h2>🔥 Retos financieros</h2></div>
+        <div style="margin-bottom:12px"><h3 style="font-size:.9rem;color:var(--t);margin-bottom:8px">⏰ Diarios</h3>
+          ${dailyChallenges.slice(0,3).map(ch => `<div class="rec-card ${ch.hard?'urgent':'tip'}" style="padding:10px 12px;margin-bottom:6px"><p>${ch.text}</p></div>`).join('')}
+        </div>
+        <div style="margin-bottom:12px"><h3 style="font-size:.9rem;color:var(--t);margin-bottom:8px">📅 Semanales</h3>
+          ${weeklyChallenges.slice(0,3).map(ch => `<div class="rec-card ${ch.hard?'urgent':'tip'}" style="padding:10px 12px;margin-bottom:6px"><p>${ch.text}</p></div>`).join('')}
+        </div>
+        <div><h3 style="font-size:.9rem;color:var(--t);margin-bottom:8px">📆 Mensuales</h3>
+          ${monthlyChallenges.slice(0,3).map(ch => `<div class="rec-card ${ch.hard?'urgent':'tip'}" style="padding:10px 12px;margin-bottom:6px"><p>${ch.text}</p></div>`).join('')}
+        </div>
+        </div>` : ''}
+
+        ${hasData && sr < 15 ? `
+        <div class="card" style="background:linear-gradient(135deg,#fff8f7,#fff)">
+          <div class="card-h"><h2>💡 Para mejorar tu tasa de ahorro</h2></div>
+          <div class="rec-card tip" style="margin-bottom:6px"><h4>📋 Revisa suscripciones</h4><p>Servicios como streaming, apps, seguros — cancela lo que no uses.</p></div>
+          <div class="rec-card tip" style="margin-bottom:6px"><h4>🍱 Prepara comida en casa</h4><p>Reducir comidas fuera puede ahorrarte 15-30% en alimentación.</p></div>
+          <div class="rec-card tip"><h4>🚶 Transporte alternativo</h4><p>Caminar o transporte público reduce gastos de gasolina/estacionamiento.</p></div>
+        </div>` : ''}
+
+        ${!hasData ? '' : `
+        <div class="card">
+          <div class="card-h"><h2>📈 Resumen del mes</h2></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="stat-c income"><div class="stat-l">💰 Ingresos del mes</div><div class="stat-v">${U.fmt(mi)}</div></div>
+            <div class="stat-c expense"><div class="stat-l">💸 Gastos del mes</div><div class="stat-v">${U.fmt(me)}</div></div>
+            <div class="stat-c balance"><div class="stat-l">⚖️ Balance mensual</div><div class="stat-v" style="color:${(mi-me)>=0?'var(--mint)':'var(--pink)'}">${U.fmt(mi-me)}</div></div>
+            <div class="stat-c savings"><div class="stat-l">🐷 Ahorro del mes</div><div class="stat-v">${U.fmt(ms)}</div></div>
+          </div>
+        </div>`}
+        `;
+        c.innerHTML = html;
     },
 
     openGoalForm(id) {
