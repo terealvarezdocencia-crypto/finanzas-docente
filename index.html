@@ -247,9 +247,17 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
       <button class="btn btn-o btn-sm" onclick="App.backupData()">&#x1F5C2; Respaldo JSON</button>
       <button class="btn btn-o btn-sm" onclick="document.getElementById('restore-input').click()">&#x1F4C2; Restaurar JSON</button>
       <input type="file" id="restore-input" accept=".json" style="display:none" onchange="App.restoreData(event)">
-      <button class="btn btn-o btn-sm" onclick="App.exportExcel()">&#x1F4CA; Exportar Excel</button>
-      <button class="btn btn-w btn-sm" onclick="document.getElementById('excel-input').click()">&#x1F4C1; Importar Excel</button>
-      <input type="file" id="excel-input" accept=".xlsx,.xls" style="display:none" onchange="App.importExcel(event)">
+      <button class="btn btn-o btn-sm" onclick="App.exportExcel()">&#x1F4CA; Excel completo</button>
+      <button class="btn btn-o btn-sm" onclick="App.exportTxExcel()">📤 Exportar transacciones</button>
+      <button class="btn btn-o btn-sm" onclick="App.exportBudgetExcel()">📤 Exportar presupuesto</button>
+      <span style="display:flex;gap:6px;flex-wrap:wrap;width:100%">
+        <button class="btn btn-w btn-sm" onclick="document.getElementById('excel-input').click()">📥 Importar Excel completo</button>
+        <input type="file" id="excel-input" accept=".xlsx,.xls" style="display:none" onchange="App.importExcel(event)">
+        <button class="btn btn-w btn-sm" onclick="document.getElementById('tx-excel-input').click()">📥 Importar transacciones</button>
+        <input type="file" id="tx-excel-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="App.importTxExcel(event)">
+        <button class="btn btn-w btn-sm" onclick="document.getElementById('budget-excel-input').click()">📥 Importar presupuesto</button>
+        <input type="file" id="budget-excel-input" accept=".xlsx,.xls" style="display:none" onchange="App.importBudgetExcel(event)">
+      </span>
       <button class="btn btn-d btn-sm" onclick="App.resetData()">&#x26A0; Reiniciar datos</button>
       <button class="btn btn-d btn-sm" onclick="App.removeCurrentModule()">❌ Eliminar módulo actual</button>
     </div>
@@ -1889,6 +1897,123 @@ const App = {
             };
             reader.readAsBinaryString(file);
             event.target.value='';
+        });
+    },
+
+    exportTxExcel() {
+        try {
+            if (typeof XLSX==='undefined') { toast('Error cargando XLSX','e'); return; }
+            const tx = U.mod('transactions');
+            const cats = U.mod('categories');
+            const accounts = U.mod('accounts');
+            const wb = XLSX.utils.book_new();
+            const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳'};
+            const data = tx.map(t => {
+                const cat = cats.find(c=>c.id===t.categoryId);
+                const acc = accounts.find(a=>a.id===t.accountId);
+                return {Fecha:t.date,Tipo:(typeIcon[t.type]||'')+' '+t.type,Rubro:cat?cat.name:'',Cuenta:acc?acc.name:'',Monto:t.amount,Descripción:t.description||''};
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Transacciones');
+            XLSX.writeFile(wb, 'transacciones_'+U.today()+'.xlsx');
+            toast('Transacciones exportadas','s');
+        } catch(err) { toast('Error: '+err.message,'e'); }
+    },
+
+    exportBudgetExcel() {
+        try {
+            if (typeof XLSX==='undefined') { toast('Error cargando XLSX','e'); return; }
+            const cats = U.mod('categories');
+            const budgets = U.mod('budgets')||{};
+            const weeklyBudgets = U.mod('weeklyBudgets')||{};
+            const wb = XLSX.utils.book_new();
+            const data = [];
+            Object.keys(budgets).forEach(k => {
+                const parts = k.split('-'); const catId = parts.slice(1).join('-');
+                const cat = cats.find(c=>c.id===catId);
+                data.push({Periodo:parts[0],Tipo:'mensual',Rubro:cat?cat.name:catId,Limite:budgets[k]});
+            });
+            Object.keys(weeklyBudgets).forEach(k => {
+                const parts = k.split('-'); const catId = parts.slice(1).join('-');
+                const cat = cats.find(c=>c.id===catId);
+                data.push({Periodo:parts[0],Tipo:'semanal',Rubro:cat?cat.name:catId,Limite:weeklyBudgets[k]});
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Presupuesto');
+            XLSX.writeFile(wb, 'presupuesto_'+U.today()+'.xlsx');
+            toast('Presupuesto exportado','s');
+        } catch(err) { toast('Error: '+err.message,'e'); }
+    },
+
+    importTxExcel(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        if (typeof XLSX==='undefined') { toast('Error cargando XLSX','e'); return; }
+        Confirm.show('Importar transacciones','¿Agregar estas transacciones a las actuales?', ok => {
+            if (!ok) { event.target.value=''; return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const wb = XLSX.read(e.target.result, {type:'binary'});
+                    const sheet = wb.SheetNames[0];
+                    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet]);
+                    const cats = U.mod('categories');
+                    const accounts = U.mod('accounts');
+                    const tx = U.mod('transactions');
+                    let imp = 0;
+                    rows.forEach(r => {
+                        if (r.Fecha && r.Tipo && r.Monto) {
+                            const cleanType = String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('ingreso')?'income'
+                                : String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('ahorro')?'saving'
+                                : String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('deuda')?'debt'
+                                : String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('transfer')?'transfer'
+                                : 'expense';
+                            const cat = cats.find(c=>c.name.toLowerCase()===((r.Rubro||'').toLowerCase()));
+                            const acc = accounts.find(a=>a.name.toLowerCase()===((r.Cuenta||'').toLowerCase()));
+                            tx.push({id:U.uid(), date:r.Fecha, type:cleanType, categoryId:cat?cat.id:'cat_'+cleanType, accountId:acc?acc.id:'', amount:r.Monto, description:r.Descripción||''});
+                            imp++;
+                        }
+                    });
+                    U.modSet('transactions', tx); DB.save();
+                    this.renderDashboard(); this.renderTransactions();
+                    toast(imp+' transacciones importadas','s');
+                } catch(err) { toast('Error al importar: '+err.message,'e'); }
+            };
+            reader.readAsBinaryString(file); event.target.value='';
+        });
+    },
+
+    importBudgetExcel(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        if (typeof XLSX==='undefined') { toast('Error cargando XLSX','e'); return; }
+        Confirm.show('Importar presupuesto','¿Agregar estos presupuestos a los actuales?', ok => {
+            if (!ok) { event.target.value=''; return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const wb = XLSX.read(e.target.result, {type:'binary'});
+                    const sheet = wb.SheetNames[0];
+                    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet]);
+                    const cats = U.mod('categories');
+                    const budgets = U.mod('budgets')||{};
+                    const weeklyBudgets = U.mod('weeklyBudgets')||{};
+                    let imp = 0;
+                    rows.forEach(r => {
+                        if (r.Periodo && r.Limite && r.Rubro) {
+                            const cat = cats.find(c=>c.name.toLowerCase()===r.Rubro.toLowerCase());
+                            if (cat) {
+                                const key = r.Periodo+'-'+cat.id;
+                                if (r.Tipo==='semanal') weeklyBudgets[key] = r.Limite;
+                                else budgets[key] = r.Limite;
+                                imp++;
+                            }
+                        }
+                    });
+                    U.modSet('budgets', budgets); U.modSet('weeklyBudgets', weeklyBudgets); DB.save();
+                    this.renderBudget();
+                    toast(imp+' presupuestos importados','s');
+                } catch(err) { toast('Error al importar: '+err.message,'e'); }
+            };
+            reader.readAsBinaryString(file); event.target.value='';
         });
     },
 
