@@ -310,7 +310,7 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
     </div>
     <p class="text-muted mb-10" id="budget-period-label">Periodo mensual actual</p>
     <div class="chart-wrap mb-20"><canvas id="chart-budget"></canvas></div>
-    <div class="table-wrap"><table><thead><tr><th>Rubro</th><th>Límite</th><th>Gastado</th><th>Progreso</th><th></th></tr></thead><tbody id="budget-list"></tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Rubro</th><th>Meta / Límite</th><th>Real</th><th>Progreso</th><th></th></tr></thead><tbody id="budget-list"></tbody></table></div>
   </div>
 </div>
 
@@ -433,7 +433,7 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
         </select>
       </div>
       <div class="fg"><label>Identificador del periodo</label><input type="text" class="fc" id="budget-period-id" readonly style="background:#f5f5f5"></div>
-      <div class="fg"><label>Límite de gasto ($)</label><input type="number" class="fc" id="budget-amount" min="0" step="0.01"></div>
+      <div class="fg"><label id="budget-amount-label">Monto ($)</label><input type="number" class="fc" id="budget-amount" min="0" step="0.01"></div>
       <div class="modal-f"><button type="button" class="btn btn-o" id="btn-cancel-budget">Cancelar</button><button type="submit" class="btn btn-p">Guardar</button></div>
     </form>
   </div>
@@ -1433,40 +1433,80 @@ const App = {
         const isWeekly = this.budgetPeriod==='weekly';
         const periodKey = isWeekly ? U.weekKey(U.today()) : U.monthYear(U.today());
         const budgetSource = isWeekly ? weeklyBudgets : budgets;
-        const cats = U.mod('categories').filter(c=>c.type==='expense');
-        const tx = U.mod('transactions').filter(t=>t.type==='expense');
-        const periodTx = isWeekly ? tx.filter(t=>U.weekKey(t.date)===periodKey) : tx.filter(t=>U.monthYear(t.date)===periodKey);
+        const expenseCats = U.mod('categories').filter(c=>c.type==='expense');
+        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
+        const tx = U.mod('transactions');
+        const periodTx = isWeekly ? tx : tx;
+        const periodExpenseTx = tx.filter(t=>t.type==='expense'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
+        const periodIncomeTx = tx.filter(t=>t.type==='income'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
 
         document.getElementById('budget-period-label').textContent = 'Periodo '+(isWeekly?'semanal':'mensual')+' actual: '+periodKey;
 
-        document.getElementById('budget-list').innerHTML = cats.map(c=>{
-            const spent = periodTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
+        const rowHtml = (c, type) => {
+            const isExpense = type==='expense';
+            const actual = isExpense
+                ? periodExpenseTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0)
+                : periodIncomeTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
             const budget = budgetSource[periodKey+'-'+c.id]||0;
-            const pct = budget>0?Math.min(100,Math.round(spent/budget*100)):0;
-            const color = pct>90?'var(--d)':pct>70?'var(--w)':'var(--s)';
-            return '<tr><td>'+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin límite')+'</td>'
-                +'<td style="font-weight:600">'+U.fmt(spent)+'</td>'
-                +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'-')+'</td>'
-                +'<td><button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar')+'</button></td></tr>';
-        }).join('');
-        this.renderBudgetChart(budgetSource, periodKey, cats, periodTx);
+            if (isExpense) {
+                const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
+                const color = pct>90?'var(--d)':pct>70?'var(--w)':'var(--s)';
+                return '<tr><td>💸 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin límite')+'</td>'
+                    +'<td style="font-weight:600;color:var(--d)">'+U.fmt(actual)+'</td>'
+                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'-')+'</td>'
+                    +'<td><button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar')+'</button></td></tr>';
+            } else {
+                const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
+                const color = pct>=100?'var(--mint)':pct>=75?'var(--sky)':pct>=50?'var(--cream)':'var(--pink)';
+                const label = budget>0?'Meta: ':'Sin meta';
+                return '<tr style="background:linear-gradient(90deg,#f6fff8,#fff)"><td>💰 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin meta')+'</td>'
+                    +'<td style="font-weight:600;color:var(--mint)">'+U.fmt(actual)+'</td>'
+                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'-')+'</td>'
+                    +'<td><button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar meta')+'</button></td></tr>';
+            }
+        };
+
+        const expenseRows = expenseCats.map(c=>rowHtml(c,'expense')).join('');
+        const incomeRows = incomeCats.map(c=>rowHtml(c,'income')).join('');
+
+        document.getElementById('budget-list').innerHTML = (incomeRows ? '<tr style="background:#fdf8fe"><td colspan="5"><strong>💰 Ingresos — Metas del periodo</strong></td></tr>'+incomeRows : '')
+            + (expenseRows ? '<tr style="background:#fdf8fa"><td colspan="5"><strong>💸 Gastos — Límites del periodo</strong></td></tr>'+expenseRows : '');
+        this.renderBudgetChart(budgetSource, periodKey, expenseCats, incomeCats, periodExpenseTx, periodIncomeTx);
     },
 
-    renderBudgetChart(budgetSource, periodKey, cats, tx) {
+    renderBudgetChart(budgetSource, periodKey, expenseCats, incomeCats, periodExpenseTx, periodIncomeTx) {
         if (this.charts.budget) { this.charts.budget.destroy(); }
         const ctx = document.getElementById('chart-budget');
         if (!ctx) return;
-        const hasB = cats.some(c=>budgetSource[periodKey+'-'+c.id]>0);
-        if (!hasB) { Kawaii.budgetChart(ctx, { labels:['Sin presupuestos'], datasets:[{ data:[1], backgroundColor:['#f0e8ee'] }] }, { plugins:{legend:{display:false}} }); return; }
-        const cwb = cats.filter(c=>budgetSource[periodKey+'-'+c.id]>0);
-        const labels=cwb.map(c=>c.name);
-        const bData=cwb.map(c=>budgetSource[periodKey+'-'+c.id]);
-        const sData=cwb.map(c=>tx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0));
-        const pcts=cwb.map(c=>{const b=budgetSource[periodKey+'-'+c.id];const s=tx.filter(t=>t.categoryId===c.id).reduce((a,t)=>a+t.amount,0);return b>0?Math.min(100,Math.round(s/b*100)):0;});
-        const limColor = '#E0BBE4';
-        const gastColor = pcts.map(p => p>90?'#FFB7B2':p>70?'#FFF2CC':'#B5EAD7');
+        const hasExpense = expenseCats.some(c=>budgetSource[periodKey+'-'+c.id]>0);
+        const hasIncome = incomeCats.some(c=>budgetSource[periodKey+'-'+c.id]>0);
+        if (!hasExpense && !hasIncome) { Kawaii.budgetChart(ctx, { labels:['Sin presupuestos'], datasets:[{ data:[1], backgroundColor:['#f0e8ee'] }] }, { plugins:{legend:{display:false}} }); return; }
+        const labels = [];
+        const limitData = [];
+        const actualData = [];
+        const colors = [];
+        if (hasIncome) {
+            incomeCats.filter(c=>budgetSource[periodKey+'-'+c.id]>0).forEach(c => {
+                labels.push('💰 '+c.name);
+                limitData.push(budgetSource[periodKey+'-'+c.id]);
+                const s = periodIncomeTx.filter(t=>t.categoryId===c.id).reduce((a,t)=>a+t.amount,0);
+                actualData.push(s);
+                const p = budgetSource[periodKey+'-'+c.id]>0?Math.min(100,Math.round(s/budgetSource[periodKey+'-'+c.id]*100)):0;
+                colors.push(p>=100?'#B5EAD7':p>=75?'#A8D8EA':'#FFD3B6');
+            });
+        }
+        if (hasExpense) {
+            expenseCats.filter(c=>budgetSource[periodKey+'-'+c.id]>0).forEach(c => {
+                labels.push('💸 '+c.name);
+                limitData.push(budgetSource[periodKey+'-'+c.id]);
+                const s = periodExpenseTx.filter(t=>t.categoryId===c.id).reduce((a,t)=>a+t.amount,0);
+                actualData.push(s);
+                const p = budgetSource[periodKey+'-'+c.id]>0?Math.min(100,Math.round(s/budgetSource[periodKey+'-'+c.id]*100)):0;
+                colors.push(p>90?'#FFB7B2':p>70?'#FFF2CC':'#B5EAD7');
+            });
+        }
         this.charts.budget = Kawaii.budgetChart(ctx, {
-            labels, datasets:[ {label:'Límite',data:bData,backgroundColor:limColor}, {label:'Gastado',data:sData,backgroundColor:gastColor} ]
+            labels, datasets:[ {label:'Meta / Límite',data:limitData,backgroundColor:'#E0BBE4'}, {label:'Real',data:actualData,backgroundColor:colors} ]
         }, { plugins:{legend:{position:'bottom',labels:{font:{size:10}}}} });
         setTimeout(kawaiiWrap, 50);
     },
@@ -1482,7 +1522,9 @@ const App = {
         document.getElementById('budget-cat-id').value = catId;
         document.getElementById('budget-amount').value = budgets[periodKey+'-'+catId]||'';
         const cat = U.mod('categories').find(c=>c.id===catId);
-        document.getElementById('budget-cat-display').textContent = 'Presupuesto para: '+(cat?cat.name:'')+' ('+(isWeekly?'semanal':'mensual')+')';
+        const isIncome = cat && cat.type==='income';
+        document.getElementById('budget-cat-display').textContent = (isIncome?'💰 Meta de ingreso para: ':'💸 Límite de gasto para: ')+(cat?cat.name:'')+' ('+(isWeekly?'semanal':'mensual')+')';
+        document.getElementById('budget-amount-label').textContent = isIncome ? 'Meta de ingreso ($)' : 'Límite de gasto ($)';
     },
 
     closeBudgetForm() { document.getElementById('budget-modal').classList.remove('active'); },
