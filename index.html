@@ -277,7 +277,7 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
   <div class="card">
     <div class="card-h"><h2>Transacciones</h2><button class="btn btn-p btn-sm" onclick="App.openTxForm()">+ Nueva</button></div>
     <div class="filter-bar">
-      <select class="fc" id="tx-filter-type" onchange="App.renderTransactions()"><option value="all">Todos</option><option value="income">Ingreso</option><option value="expense">Gasto</option><option value="transfer">Transferencia</option><option value="debt">Deuda</option><option value="saving">Ahorro</option></select>
+      <select class="fc" id="tx-filter-type" onchange="App.renderTransactions()"><option value="all">Todos</option><option value="income">Ingreso</option><option value="expense">Gasto</option><option value="transfer">Transferencia</option><option value="debt">Deuda</option><option value="loan_payment">Pago prést.</option><option value="saving">Ahorro</option></select>
       <select class="fc" id="tx-filter-account" onchange="App.renderTransactions()"><option value="all">Todas las cuentas</option></select>
       <select class="fc" id="tx-filter-cat" onchange="App.renderTransactions()"><option value="all">Todos los rubros</option></select>
       <input type="month" class="fc" id="tx-filter-month" onchange="App.renderTransactions()" style="min-width:130px">
@@ -354,6 +354,9 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
           <button type="button" class="tx-type-btn" data-value="debt" onclick="App.setTxType('debt')" style="flex:1;padding:10px 6px;border:2px solid #e8d5e0;border-radius:14px;background:#fff;cursor:pointer;transition:.25s;text-align:center;font-size:.82rem;font-weight:600;color:#5a3d4a;min-width:70px">
             <div style="font-size:1.4rem;margin-bottom:2px">💳</div>Deuda
           </button>
+          <button type="button" class="tx-type-btn" data-value="loan_payment" onclick="App.setTxType('loan_payment')" style="flex:1;padding:10px 6px;border:2px solid #e8d5e0;border-radius:14px;background:#fff;cursor:pointer;transition:.25s;text-align:center;font-size:.82rem;font-weight:600;color:#5a3d4a;min-width:70px">
+            <div style="font-size:1.4rem;margin-bottom:2px">🤝</div>Pago prést.
+          </button>
         </div>
         <input type="hidden" id="tx-type" value="income">
       </div>
@@ -387,6 +390,7 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
             <option value="checking">Cheques</option>
             <option value="credit">Crédito</option>
             <option value="investment">Inversión</option>
+            <option value="loan">🤝 Préstamo (te deben)</option>
           </select>
         </div>
         <div class="fg"><label>Pertenece a</label><input type="text" class="fc" id="acc-owner" placeholder="¿Quién usa esta cuenta?"></div>
@@ -680,8 +684,14 @@ const U = {
         const acc = U.mod('accounts').find(a=>a.id===id);
         let bal = acc ? (acc.initialBalance||0) : 0;
         for (const t of U.mod('transactions')) {
-            if (t.accountId === id) { if(t.type==='income'||t.type==='debt')bal+=t.amount; else if(t.type==='expense')bal-=t.amount; else if(t.type==='saving')bal-=t.amount; }
+            if (t.accountId === id) {
+                if (t.type==='income'||t.type==='debt') bal+=t.amount;
+                else if (t.type==='expense') bal-=t.amount;
+                else if (t.type==='saving') bal-=t.amount;
+                else if (t.type==='loan_payment') bal-=t.amount; // payment received reduces loan
+            }
             if (t.type==='transfer'&&t.destAccountId) { if(t.accountId===id)bal-=t.amount; if(t.destAccountId===id)bal+=t.amount; }
+            if (t.type==='loan_payment'&&t.destAccountId) { if(t.accountId===id)bal-=t.amount; if(t.destAccountId===id)bal+=t.amount; }
         }
         return bal;
     },
@@ -952,7 +962,7 @@ const App = {
             : accounts.map(a => {
                 const bal = U.getBalance(a.id);
                 const col = bal>=0?'var(--s)':'var(--d)';
-                const lb = {cash:'Efectivo',checking:'Cheques',savings:'Ahorro',debt:'Deuda',credit:'Crédito',investment:'Inversión'};
+                const lb = {cash:'Efectivo',checking:'Cheques',savings:'Ahorro',debt:'Deuda',credit:'Crédito',investment:'Inversión',loan:'🤝 Préstamo'};
                 const incl = a.includeInBalance !== false;
                 return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#f8fafc;border-radius:var(--rs);border-left:4px solid '+col+'">'
                     +'<div><strong>'+a.name+'</strong>'+(incl?'':' <span class="badge badge-expense" style="font-size:.6rem">Excluida</span>')+'<br><span class="text-muted" style="font-size:.75rem">'+(lb[a.type]||a.type)+(a.owner?' &middot; '+a.owner:'')+'</span></div>'
@@ -965,10 +975,11 @@ const App = {
             : recent.map(t=>{
                 const cat = U.mod('categories').find(c=>c.id===t.categoryId);
                 const acc = U.mod('accounts').find(a=>a.id===t.accountId);
-                const pos = t.type==='income'||t.type==='debt';
-                const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳'};
-                const badgeType = t.type==='transfer'?'debt':t.type;
-                return '<tr><td>'+U.fmtDate(t.date)+'</td><td><span class="badge badge-'+badgeType+'">'+(typeIcon[t.type]||'')+' '+t.type+'</span></td>'
+                const pos = t.type==='income'||t.type==='debt'||t.type==='loan_payment';
+                const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
+                const badgeType = t.type==='transfer'?'debt':t.type==='loan_payment'?'saving':t.type;
+                const typeLabel = {income:'Ingreso',expense:'Gasto',saving:'Ahorro',transfer:'Transf.',debt:'Deuda',loan_payment:'Pago prést.'};
+                return '<tr><td>'+U.fmtDate(t.date)+'</td><td><span class="badge badge-'+badgeType+'">'+(typeIcon[t.type]||'')+' '+(typeLabel[t.type]||t.type)+'</span></td>'
                     +'<td>'+(cat?cat.name:'-')+'</td><td>'+(acc?acc.name:'-')+'</td><td>'+(t.description||'-')+'</td>'
                     +'<td style="font-weight:600;color:'+(pos?'var(--s)':'var(--d)')+'">'+U.fmt(t.amount)+'</td></tr>';
             }).join('');
@@ -1091,10 +1102,11 @@ const App = {
             : filtered.map(t=>{
                 const cat = categories.find(c=>c.id===t.categoryId);
                 const acc = accounts.find(a=>a.id===t.accountId);
-                const pos = t.type==='income'||t.type==='debt';
-                const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳'};
-                const badgeType = t.type==='transfer'?'debt':t.type;
-                return '<tr><td>'+U.fmtDate(t.date)+'</td><td><span class="badge badge-'+badgeType+'">'+(typeIcon[t.type]||'')+' '+t.type+'</span></td>'
+                const pos = t.type==='income'||t.type==='debt'||t.type==='loan_payment';
+                const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
+                const typeLabel = {income:'Ingreso',expense:'Gasto',saving:'Ahorro',transfer:'Transf.',debt:'Deuda',loan_payment:'Pago prést.'};
+                const badgeType = t.type==='transfer'?'debt':t.type==='loan_payment'?'saving':t.type;
+                return '<tr><td>'+U.fmtDate(t.date)+'</td><td><span class="badge badge-'+badgeType+'">'+(typeIcon[t.type]||'')+' '+(typeLabel[t.type]||t.type)+'</span></td>'
                     +'<td>'+(cat?cat.name:'-')+'</td><td>'+(acc?acc.name:'-')+'</td><td>'+(t.description||'-')+'</td>'
                     +'<td style="font-weight:600;color:'+(pos?'var(--s)':'var(--d)')+'">'+U.fmt(t.amount)+'</td>'
                     +'<td><button class="btn btn-xs btn-o" onclick="App.openTxForm(\''+t.id+'\')">✏️</button> '
@@ -1120,7 +1132,7 @@ const App = {
             const key = t.categoryId || 'sin_rubro';
             if (!byRubro[key]) byRubro[key]={ income:0, expense:0, transfer:0, debt:0, saving:0, total:0 };
             byRubro[key][t.type] = (byRubro[key][t.type]||0) + t.amount;
-            byRubro[key].total += t.type==='income'||t.type==='debt'?t.amount:-t.amount;
+            byRubro[key].total += t.type==='income'||t.type==='debt'||t.type==='loan_payment'?t.amount:-t.amount;
         });
         const sorted = Object.entries(byRubro).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total));
         c.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Rubro</th><th>Ingresos</th><th>Gastos</th><th>Neto</th></tr></thead><tbody>'
@@ -1168,7 +1180,7 @@ const App = {
                 document.getElementById('tx-category').value=t.categoryId||'';
                 document.getElementById('tx-account').value=t.accountId||''; document.getElementById('tx-amount').value=t.amount;
                 document.getElementById('tx-desc').value=t.description||'';
-                if (t.type==='transfer') { document.getElementById('tx-dest-group').style.display='block'; document.getElementById('tx-dest-account').value=t.destAccountId||''; }
+                if (t.type==='transfer'||t.type==='loan_payment') { document.getElementById('tx-dest-group').style.display='block'; document.getElementById('tx-dest-account').value=t.destAccountId||''; }
                 if (t.type==='saving') { document.getElementById('tx-goal-group').style.display='block'; document.getElementById('tx-goal').value=t.goalId||''; }
             }
         }
@@ -1179,10 +1191,11 @@ const App = {
         const sel = document.getElementById('tx-category');
         const dg = document.getElementById('tx-dest-group');
         const gg = document.getElementById('tx-goal-group');
-        const icon = {income:'💰',expense:'💸',saving:'🐷',debt:'💳',transfer:'🔄'};
-        if (type==='transfer') { sel.innerHTML='<option value="cat_transfer">🔄 Transferencia entre cuentas</option>'; dg.style.display='block'; gg.style.display='none'; }
+        const icon = {income:'💰',expense:'💸',saving:'🐷',debt:'💳',transfer:'🔄',loan_payment:'🤝'};
+        if (type==='transfer') { sel.innerHTML='<option value="cat_transfer">🔄 Transferencia entre cuentas</option>'; dg.style.display='block'; gg.style.display='none'; dg.querySelector('label').textContent='Cuenta destino'; }
+        else if (type==='loan_payment') { sel.innerHTML='<option value="cat_loan_payment">🤝 Pago de préstamo recibido</option>'; dg.style.display='block'; gg.style.display='none'; dg.querySelector('label').textContent='🤝 El dinero se deposita en:'; }
         else {
-            dg.style.display='none';
+            dg.style.display='none'; dg.querySelector('label').textContent='Cuenta destino';
             if (type==='debt') { sel.innerHTML='<option value="cat_debt">💳 Deuda general</option>'; gg.style.display='none'; }
             else if (type==='saving') {
                 const cats = U.mod('categories').filter(c=>c.type==='saving');
@@ -1222,6 +1235,7 @@ const App = {
             description: document.getElementById('tx-desc').value.trim(),
         };
         if (type==='transfer') { data.destAccountId=document.getElementById('tx-dest-account').value; data.categoryId='cat_transfer'; }
+        if (type==='loan_payment') { data.destAccountId=document.getElementById('tx-dest-account').value; data.categoryId='cat_loan_payment'; }
         if (type==='saving') data.goalId = goalId;
         if (!data.date||!data.amount||data.amount<=0) { toast('Completa los campos requeridos','e'); return; }
         if (type==='transfer'&&data.accountId===data.destAccountId) { toast('Selecciona cuentas diferentes','e'); return; }
@@ -1279,7 +1293,7 @@ const App = {
     // ===== ACCOUNTS =====
     renderAccounts() {
         const accounts = U.mod('accounts');
-        const label = {cash:'Efectivo',checking:'Cheques',savings:'Ahorro',debt:'Deuda',credit:'Crédito',investment:'Inversión'};
+        const label = {cash:'Efectivo',checking:'Cheques',savings:'Ahorro',debt:'Deuda',credit:'Crédito',investment:'Inversión',loan:'🤝 Préstamo'};
         document.getElementById('acc-list').innerHTML = accounts.length===0
             ? '<tr><td colspan="5" class="empty-state">Sin cuentas</td></tr>'
             : accounts.map(a=>{
@@ -1338,11 +1352,11 @@ const App = {
             ? '<tr><td colspan="5" class="empty-state">Sin movimientos</td></tr>'
             : tx.map(t=>{
                 const cat = U.mod('categories').find(c=>c.id===t.categoryId);
-                const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳'};
-                const entrada = (t.type==='transfer'&&t.destAccountId===accountId) || t.type==='income'||t.type==='debt'||(t.type==='saving'&&t.destAccountId===accountId);
-                const sign = (t.type==='transfer'&&t.destAccountId===accountId)?'+':(t.type==='transfer'&&t.accountId===accountId)?'-':(entrada?'+':'-');
-                const lbl = t.type==='transfer'?(t.accountId===accountId?'Salida transferencia':'Entrada transferencia'):t.type;
-                return '<tr><td>'+U.fmtDate(t.date)+'</td><td><span class="badge badge-'+(t.type==='transfer'?'debt':t.type)+'">'+(typeIcon[t.type]||'')+' '+lbl+'</span></td>'
+                const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
+                const entrada = (t.type==='transfer'&&t.destAccountId===accountId) || t.type==='income'||t.type==='debt'||(t.type==='saving'&&t.destAccountId===accountId)||(t.type==='loan_payment'&&t.destAccountId===accountId);
+                const sign = (t.type==='transfer'&&t.destAccountId===accountId)?'+':(t.type==='transfer'&&t.accountId===accountId)?'-':(t.type==='loan_payment'&&t.destAccountId===accountId)?'+':(t.type==='loan_payment'&&t.accountId===accountId)?'-':(entrada?'+':'-');
+                const lbl = t.type==='transfer'?(t.accountId===accountId?'Salida transferencia':'Entrada transferencia'):(t.type==='loan_payment'?(t.accountId===accountId?'Pago de préstamo (sale)':'Pago de préstamo (entra)'):t.type);
+                return '<tr><td>'+U.fmtDate(t.date)+'</td><td><span class="badge badge-'+(t.type==='transfer'?'debt':t.type==='loan_payment'?'saving':t.type)+'">'+(typeIcon[t.type]||'')+' '+lbl+'</span></td>'
                     +'<td>'+(cat?cat.name:'-')+'</td><td>'+(t.description||'-')+'</td>'
                     +'<td style="font-weight:600;color:'+(sign==='+'?'var(--s)':'var(--d)')+'">'+sign+U.fmt(t.amount)+'</td></tr>';
             }).join('');
@@ -1800,7 +1814,7 @@ const App = {
             const accounts = U.mod('accounts');
             const cats = U.mod('categories');
             const goals = U.mod('goals');
-            const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳'};
+            const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
             const txData = tx.map(t => {
                 const cat = cats.find(c=>c.id===t.categoryId);
                 const acc = accounts.find(a=>a.id===t.accountId);
@@ -1916,6 +1930,7 @@ const App = {
                                     : r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('ahorro')?'saving'
                                     : r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('deuda')?'debt'
                                     : r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('transfer')?'transfer'
+                                    : (r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('prest')||r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('pago'))?'loan_payment'
                                     : 'expense';
                                 const cat = cats.find(c=>c.name.toLowerCase()===((r.Rubro||'').toLowerCase()));
                                 const acc = accounts.find(a=>a.name.toLowerCase()===((r.Cuenta||'').toLowerCase()));
@@ -1949,7 +1964,7 @@ const App = {
             const cats = U.mod('categories');
             const accounts = U.mod('accounts');
             const wb = XLSX.utils.book_new();
-            const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳'};
+            const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
             const data = tx.map(t => {
                 const cat = cats.find(c=>c.id===t.categoryId);
                 const acc = accounts.find(a=>a.id===t.accountId);
@@ -2007,6 +2022,7 @@ const App = {
                                 : String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('ahorro')?'saving'
                                 : String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('deuda')?'debt'
                                 : String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('transfer')?'transfer'
+                                : (String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('prest')||String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('pago'))?'loan_payment'
                                 : 'expense';
                             const cat = cats.find(c=>c.name.toLowerCase()===((r.Rubro||'').toLowerCase()));
                             const acc = accounts.find(a=>a.name.toLowerCase()===((r.Cuenta||'').toLowerCase()));
