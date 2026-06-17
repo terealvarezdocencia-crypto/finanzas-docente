@@ -988,7 +988,7 @@ const App = {
         document.getElementById('recent-tx').innerHTML = recent.length===0
             ? '<tr><td colspan="6" class="empty-state">Sin transacciones</td></tr>'
             : recent.map(t=>{
-                const cat = U.mod('categories').find(c=>c.id===t.categoryId);
+                const cat = App.resolveCategory(t.categoryId);
                 const acc = U.mod('accounts').find(a=>a.id===t.accountId);
                 const pos = t.type==='income'||t.type==='debt'||t.type==='loan_payment';
                 const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
@@ -1133,7 +1133,7 @@ const App = {
         const ctx2 = document.getElementById('chart-cats');
         if (ctx2 && ids.length>0) {
             this.charts.cats = Kawaii.chart(ctx2, 'doughnut', {
-                labels:ids.map(id=>{const c=U.mod('categories').find(x=>x.id===id);return c?c.name:'?';}),
+                labels:ids.map(id=>{const c=App.resolveCategory(id);return c?c.name:'?';}),
                 datasets:[{ data:ids.map(id=>expByCat[id]) }]
             }, { plugins:{legend:{position:'bottom',labels:{font:{size:10}}}} });
         } else if (ctx2) {
@@ -1161,7 +1161,7 @@ const App = {
         document.getElementById('tx-list').innerHTML = filtered.length===0
             ? '<tr><td colspan="7" class="empty-state">No hay transacciones</td></tr>'
             : filtered.map(t=>{
-                const cat = categories.find(c=>c.id===t.categoryId);
+                const cat = App.resolveCategory(t.categoryId);
                 const acc = accounts.find(a=>a.id===t.accountId);
                 const pos = t.type==='income'||t.type==='debt'||t.type==='loan_payment';
                 const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
@@ -1177,7 +1177,7 @@ const App = {
         const as = document.getElementById('tx-filter-account');
         const cs = document.getElementById('tx-filter-cat');
         if (as) { const v=as.value; as.innerHTML='<option value="all">Todas las cuentas</option>'+accounts.map(a=>'<option value="'+a.id+'">'+a.name+'</option>').join(''); as.value=v; }
-        if (cs) { const v=cs.value; cs.innerHTML='<option value="all">Todos los rubros</option>'+this.catOptionsHtml(categories); cs.value=v; }
+        if (cs) { const v=cs.value; const ccs = this.creditCardCategories(); cs.innerHTML='<option value="all">Todos los rubros</option>'+this.catOptionsHtml(categories)+(ccs.length?'<option disabled>──────────</option>'+ccs.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join(''):''); cs.value=v; }
         if (!fm) { const d=document.getElementById('tx-filter-month'); if (d&&!d.value) d.value=U.monthYear(U.today()); }
 
         this.renderMonthlyRubroSummary(tx, categories);
@@ -1198,7 +1198,7 @@ const App = {
         const sorted = Object.entries(byRubro).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total));
         c.innerHTML = '<div class="table-wrap"><table><thead><tr><th>Rubro</th><th>Ingresos</th><th>Gastos</th><th>Neto</th></tr></thead><tbody>'
             + sorted.map(([id,d])=>{
-                const cat = categories.find(c=>c.id===id);
+                const cat = App.resolveCategory(id);
                 const netColor = d.total>=0?'var(--s)':'var(--d)';
                 return '<tr><td><strong>'+(cat?cat.name:'Sin rubro')+'</strong></td>'
                     +'<td style="color:var(--s)">'+U.fmt(d.income||0)+'</td>'
@@ -1265,7 +1265,12 @@ const App = {
                 gg.style.display='block';
             } else {
                 gg.style.display='none';
-                sel.innerHTML = this.catOptionsHtml(U.mod('categories').filter(c=>c.type===type));
+                let html = this.catOptionsHtml(U.mod('categories').filter(c=>c.type===type));
+                if (type==='expense') {
+                    const ccs = this.creditCardCategories();
+                    if (ccs.length) html += '<option disabled>──────────</option>' + ccs.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join('');
+                }
+                sel.innerHTML = html;
             }
         }
     },
@@ -1280,6 +1285,21 @@ const App = {
             return '<option value="'+c.id+'">'+indent+prefix+' '+U.catPath(c.id)+'</option>';
         };
         return parents.map(p => opt(p) + subs.filter(s => s.parentId===p.id).map(s => opt(s)).join('')).join('');
+    },
+
+    creditCardCategories() {
+        return U.mod('accounts').filter(a=>a.type==='credit').map(a=>({id:'cc_'+a.id, name:'💳 '+a.name, type:'expense'}));
+    },
+
+    resolveCategory(id) {
+        if (!id) return null;
+        const cat = U.mod('categories').find(c=>c.id===id);
+        if (cat) return cat;
+        if (id.startsWith('cc_')) {
+            const acc = U.mod('accounts').find(a=>'cc_'+a.id===id);
+            if (acc) return {id, name:'💳 '+acc.name, type:'expense'};
+        }
+        return null;
     },
 
     closeTxForm() { document.getElementById('tx-modal').classList.remove('active'); },
@@ -1426,7 +1446,7 @@ const App = {
         document.getElementById('acc-tx-list').innerHTML = tx.length===0
             ? '<tr><td colspan="5" class="empty-state">Sin movimientos</td></tr>'
             : tx.map(t=>{
-                const cat = U.mod('categories').find(c=>c.id===t.categoryId);
+                const cat = App.resolveCategory(t.categoryId);
                 const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
                 const entrada = (t.type==='transfer'&&t.destAccountId===accountId) || t.type==='income'||t.type==='debt'||(t.type==='saving'&&t.destAccountId===accountId)||(t.type==='loan_payment'&&t.destAccountId===accountId);
                 const sign = (t.type==='transfer'&&t.destAccountId===accountId)?'+':(t.type==='transfer'&&t.accountId===accountId)?'-':(t.type==='loan_payment'&&t.destAccountId===accountId)?'+':(t.type==='loan_payment'&&t.accountId===accountId)?'-':(entrada?'+':'-');
@@ -1522,7 +1542,7 @@ const App = {
         const isWeekly = this.budgetPeriod==='weekly';
         const periodKey = isWeekly ? U.weekKey(U.today()) : U.monthYear(U.today());
         const budgetSource = isWeekly ? weeklyBudgets : budgets;
-        const expenseCats = U.mod('categories').filter(c=>c.type==='expense');
+        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
         const incomeCats = U.mod('categories').filter(c=>c.type==='income');
         const tx = U.mod('transactions');
         const periodTx = isWeekly ? tx : tx;
@@ -1610,7 +1630,7 @@ const App = {
         const budgets = isWeekly ? (U.mod('weeklyBudgets')||{}) : (U.mod('budgets')||{});
         document.getElementById('budget-cat-id').value = catId;
         document.getElementById('budget-amount').value = budgets[periodKey+'-'+catId]||'';
-        const cat = U.mod('categories').find(c=>c.id===catId);
+        const cat = this.resolveCategory(catId);
         const isIncome = cat && cat.type==='income';
         document.getElementById('budget-cat-display').textContent = (isIncome?'💰 Meta de ingreso para: ':'💸 Límite de gasto para: ')+(cat?cat.name:'')+' ('+(isWeekly?'semanal':'mensual')+')';
         document.getElementById('budget-amount-label').textContent = isIncome ? 'Meta de ingreso ($)' : 'Límite de gasto ($)';
@@ -1891,7 +1911,7 @@ const App = {
             const goals = U.mod('goals');
             const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
             const txData = tx.map(t => {
-                const cat = cats.find(c=>c.id===t.categoryId);
+                const cat = App.resolveCategory(t.categoryId);
                 const acc = accounts.find(a=>a.id===t.accountId);
                 return {Fecha:t.date,Tipo:(typeIcon[t.type]||'')+' '+t.type,Rubro:cat?cat.name:'',Cuenta:acc?acc.name:'',Monto:t.amount,Descripción:t.description||'',MetaId:t.goalId||''};
             });
@@ -2041,7 +2061,7 @@ const App = {
             const wb = XLSX.utils.book_new();
             const typeIcon = {income:'💰',expense:'💸',saving:'🐷',transfer:'🔄',debt:'💳',loan_payment:'🤝'};
             const data = tx.map(t => {
-                const cat = cats.find(c=>c.id===t.categoryId);
+                const cat = App.resolveCategory(t.categoryId);
                 const acc = accounts.find(a=>a.id===t.accountId);
                 return {Fecha:t.date,Tipo:(typeIcon[t.type]||'')+' '+t.type,Rubro:cat?cat.name:'',Cuenta:acc?acc.name:'',Monto:t.amount,Descripción:t.description||''};
             });
