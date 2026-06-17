@@ -236,6 +236,7 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
     <div class="card-h"><h2>Últimas transacciones</h2></div>
     <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Rubro</th><th>Cuenta</th><th>Descripción</th><th>Monto</th></tr></thead><tbody id="recent-tx"></tbody></table></div>
   </div>
+  <div id="credit-reminders"></div>
   <div class="card">
     <div class="card-h"><h2>Proyección de Libertad Financiera</h2></div>
     <div id="freedom-projection-dash"></div>
@@ -394,6 +395,13 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
           </select>
         </div>
         <div class="fg"><label>Pertenece a</label><input type="text" class="fc" id="acc-owner" placeholder="¿Quién usa esta cuenta?"></div>
+      </div>
+      <div id="acc-credit-fields" style="display:none;background:#f8f0f8;border-radius:var(--rs);padding:12px;margin-top:6px">
+        <div class="fr">
+          <div class="fg"><label>📅 Día de pago</label><input type="number" class="fc" id="acc-payment-day" min="1" max="31" placeholder="Ej: 15"></div>
+          <div class="fg"><label>📆 Día de corte</label><input type="number" class="fc" id="acc-closing-day" min="1" max="31" placeholder="Ej: 5"></div>
+        </div>
+        <p style="font-size:.75rem;color:var(--tm);margin:4px 0 0">El día de pago se usará para recordatorios automáticos</p>
       </div>
       <div class="fg"><label class="inline-flex" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="acc-balance" checked> Incluir en balance general (sumar al total)</label></div>
       <div class="modal-f"><button type="button" class="btn btn-o" id="btn-cancel-acc">Cancelar</button><button type="submit" class="btn btn-p">Guardar</button></div>
@@ -853,6 +861,9 @@ const App = {
         if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
         const v = document.getElementById('verify-modal');
         if (v) { v.classList.add('active'); document.getElementById('verify-code').addEventListener('keydown', e=>{if(e.key==='Enter')this.verify();}); }
+        // Request notification permission and check credit reminders
+        if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+        this.checkCreditNotifications();
     },
 
     verify() {
@@ -922,6 +933,10 @@ const App = {
         document.getElementById('tx-form').addEventListener('submit', e=>{e.preventDefault();this.saveTransaction();});
         document.getElementById('btn-cancel-tx').addEventListener('click', ()=>this.closeTxForm());
         document.getElementById('acc-form').addEventListener('submit', e=>{e.preventDefault();this.saveAccount();});
+        document.getElementById('acc-type').addEventListener('change', ()=>{
+            const isCredit = document.getElementById('acc-type').value === 'credit';
+            document.getElementById('acc-credit-fields').style.display = isCredit ? 'block' : 'none';
+        });
         document.getElementById('btn-cancel-acc').addEventListener('click', ()=>this.closeAccForm());
         document.getElementById('cat-form').addEventListener('submit', e=>{e.preventDefault();this.saveCategory();});
         document.getElementById('btn-cancel-cat').addEventListener('click', ()=>this.closeCatForm());
@@ -986,7 +1001,53 @@ const App = {
 
         this.renderGoalProgressSimple();
         this.renderFreedomDash();
+        this.renderCreditReminders();
         this.renderCharts(tx);
+    },
+
+    checkCreditNotifications() {
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        const credits = U.mod('accounts').filter(a => a.type==='credit' && a.paymentDay);
+        const today = new Date();
+        const day = today.getDate();
+        for (const a of credits) {
+            let due = a.paymentDay;
+            let diff = due - day;
+            if (diff < 0) diff = (due + (new Date(today.getFullYear(), today.getMonth()+1, 0).getDate() - day));
+            const bal = U.getBalance(a.id);
+            if (diff === 0) new Notification('💳 Vence hoy: '+a.name, { body: 'Monto: $'+bal.toFixed(2)+' — No olvides pagar', icon: 'icon.svg' });
+            else if (diff === 1) new Notification('⚠️ '+a.name+' vence mañana', { body: 'Monto: $'+bal.toFixed(2), icon: 'icon.svg' });
+        }
+    },
+
+    renderCreditReminders() {
+        const c = document.getElementById('credit-reminders');
+        const credits = U.mod('accounts').filter(a => a.type==='credit' && a.paymentDay);
+        if (!credits.length) { c.innerHTML = ''; return; }
+        const today = new Date();
+        const day = today.getDate();
+        const month = today.getMonth();
+        const year = today.getFullYear();
+        let html = '<div class="card" style="margin-top:12px"><div class="card-h"><h2>💳 Recordatorios de tarjetas</h2></div>';
+        for (const a of credits) {
+            const bal = U.getBalance(a.id);
+            const payDay = a.paymentDay;
+            let dueDate = new Date(year, month, payDay);
+            if (payDay < day) dueDate = new Date(year, month + 1, payDay);
+            const diff = Math.ceil((dueDate - today) / (1000*60*60*24));
+            let status, color, icon;
+            if (diff < 0) { status = 'VENCIDO hace '+Math.abs(diff)+' días'; color = 'var(--d)'; icon = '🔴'; }
+            else if (diff === 0) { status = 'HOY — pagar hoy'; color = '#e74c3c'; icon = '⏰'; }
+            else if (diff <= 3) { status = 'En '+diff+' días (pronto)'; color = '#e67e22'; icon = '⚠️'; }
+            else if (diff <= 7) { status = 'En '+diff+' días'; color = '#f39c12'; icon = '📅'; }
+            else { status = 'En '+diff+' días'; color = 'var(--s)'; icon = '✅'; }
+            const payDayStr = ('0'+payDay).slice(-2)+'/'+('0'+(dueDate.getMonth()+1)).slice(-2)+'/'+dueDate.getFullYear();
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#f8fafc;border-radius:var(--rs);border-left:4px solid '+color+';margin-bottom:6px">'
+                +'<div><strong style="color:'+color+'">'+icon+' '+a.name+'</strong><br><span style="font-size:.75rem;color:var(--tm)">Vence: '+payDayStr+' &middot; Monto: '+U.fmt(bal)+'</span></div>'
+                +'<div style="text-align:right;font-size:.8rem;font-weight:700;color:'+color+'">'+status+'</div></div>';
+        }
+        html += '</div>';
+        c.innerHTML = html;
     },
 
     renderGoalProgressSimple() {
@@ -1298,7 +1359,8 @@ const App = {
             ? '<tr><td colspan="5" class="empty-state">Sin cuentas</td></tr>'
             : accounts.map(a=>{
                 const bal = U.getBalance(a.id);
-                return '<tr><td><strong>'+a.name+'</strong>'+(a.includeInBalance===false?' <span class="badge badge-expense" style="font-size:.65rem">Excluida</span>':' <span class="badge badge-income" style="font-size:.65rem">Incluida</span>')+'</td><td>'+(label[a.type]||a.type)+'</td>'
+                const extra = (a.type==='credit'&&a.paymentDay)?' <span class="badge badge-debt" style="font-size:.65rem">Pago día '+a.paymentDay+'</span>':'';
+                return '<tr><td><strong>'+a.name+'</strong>'+(a.includeInBalance===false?' <span class="badge badge-expense" style="font-size:.65rem">Excluida</span>':' <span class="badge badge-income" style="font-size:.65rem">Incluida</span>')+extra+'</td><td>'+(label[a.type]||a.type)+'</td>'
                     +'<td style="font-weight:600;color:'+(bal>=0?'var(--s)':'var(--d)')+'">'+U.fmt(bal)+'</td>'
                     +'<td>'+(a.owner||'<span class="text-muted">-</span>')+'</td>'
                     +'<td><button class="btn btn-xs btn-s" onclick="App.showAccountTx(\''+a.id+'\')">Ver movimientos</button> '
@@ -1314,6 +1376,9 @@ const App = {
         document.getElementById('acc-initial').value='';
         document.getElementById('acc-owner').value='';
         document.getElementById('acc-balance').checked = true;
+        document.getElementById('acc-credit-fields').style.display = 'none';
+        document.getElementById('acc-payment-day').value = '';
+        document.getElementById('acc-closing-day').value = '';
         if (id) {
             const a = U.mod('accounts').find(x=>x.id===id);
             if (a) {
@@ -1321,6 +1386,11 @@ const App = {
                 document.getElementById('acc-type').value=a.type; document.getElementById('acc-initial').value=a.initialBalance||0;
                 document.getElementById('acc-owner').value=a.owner||'';
                 document.getElementById('acc-balance').checked = a.includeInBalance !== false;
+                if (a.type==='credit') {
+                    document.getElementById('acc-credit-fields').style.display = 'block';
+                    document.getElementById('acc-payment-day').value = a.paymentDay||'';
+                    document.getElementById('acc-closing-day').value = a.closingDay||'';
+                }
             }
         }
     },
@@ -1329,7 +1399,12 @@ const App = {
 
     saveAccount() {
         const id = document.getElementById('acc-id').value;
+        const isCredit = document.getElementById('acc-type').value === 'credit';
         const data = { name: document.getElementById('acc-name').value.trim(), type: document.getElementById('acc-type').value, owner: document.getElementById('acc-owner').value.trim()||'', initialBalance: parseFloat(document.getElementById('acc-initial').value)||0, includeInBalance: document.getElementById('acc-balance').checked };
+        if (isCredit) {
+            data.paymentDay = parseInt(document.getElementById('acc-payment-day').value)||0;
+            data.closingDay = parseInt(document.getElementById('acc-closing-day').value)||0;
+        }
         if (!data.name) { toast('El nombre es requerido','e'); return; }
         if (id) U.modUpdate('accounts', id, data);
         else { data.id=U.uid(); U.modAdd('accounts', data); }
