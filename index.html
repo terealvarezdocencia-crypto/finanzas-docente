@@ -1929,13 +1929,13 @@ const App = {
             Object.keys(budgets).forEach(k => {
                 const parts = k.split('-');
                 const catId = parts.slice(1).join('-');
-                const cat = cats.find(c=>c.id===catId);
+                const cat = App.resolveCategory(catId);
                 budgetData.push({Periodo:parts[0],Tipo:'mensual',Rubro:cat?cat.name:catId,Limite:budgets[k]});
             });
             Object.keys(weeklyBudgets).forEach(k => {
                 const parts = k.split('-');
                 const catId = parts.slice(1).join('-');
-                const cat = cats.find(c=>c.id===catId);
+                const cat = App.resolveCategory(catId);
                 budgetData.push({Periodo:parts[0],Tipo:'semanal',Rubro:cat?cat.name:catId,Limite:weeklyBudgets[k]});
             });
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(budgetData), 'Presupuesto');
@@ -2003,7 +2003,11 @@ const App = {
                         const weeklyBudgets = U.mod('weeklyBudgets')||{};
                         rows.forEach(r => {
                             if (r.Periodo && r.Limite && r.Rubro) {
-                                const cat = cats.find(c=>c.name.toLowerCase()===r.Rubro.toLowerCase());
+                                let cat = cats.find(c=>c.name.toLowerCase()===r.Rubro.toLowerCase());
+                                if (!cat) {
+                                    const cc = U.mod('accounts').find(a=>a.type==='credit' && r.Rubro.toLowerCase().includes(a.name.toLowerCase()));
+                                    if (cc) cat = {id:'cc_'+cc.id, name:'💳 '+cc.name, type:'expense'};
+                                }
                                 if (cat) {
                                     const key = r.Periodo+'-'+cat.id;
                                     if (r.Tipo==='semanal') weeklyBudgets[key] = r.Limite;
@@ -2027,7 +2031,11 @@ const App = {
                                     : r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('transfer')?'transfer'
                                     : (r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('prest')||r.Tipo.replace(/[^\w]/g,'').toLowerCase().includes('pago'))?'loan_payment'
                                     : 'expense';
-                                const cat = cats.find(c=>c.name.toLowerCase()===((r.Rubro||'').toLowerCase()));
+                                let cat = cats.find(c=>c.name.toLowerCase()===((r.Rubro||'').toLowerCase()));
+                                if (!cat) {
+                                    const cc = U.mod('accounts').find(a=>a.type==='credit' && (r.Rubro||'').toLowerCase().includes(a.name.toLowerCase()));
+                                    if (cc) cat = {id:'cc_'+cc.id, name:'💳 '+cc.name, type:'expense'};
+                                }
                                 const acc = accounts.find(a=>a.name.toLowerCase()===((r.Cuenta||'').toLowerCase()));
                                 tx.push({
                                     id: U.uid(), date: r.Fecha, type: cleanType,
@@ -2081,12 +2089,12 @@ const App = {
             const data = [];
             Object.keys(budgets).forEach(k => {
                 const parts = k.split('-'); const catId = parts.slice(1).join('-');
-                const cat = cats.find(c=>c.id===catId);
+                const cat = App.resolveCategory(catId);
                 data.push({Periodo:parts[0],Tipo:'mensual',Rubro:cat?cat.name:catId,Limite:budgets[k]});
             });
             Object.keys(weeklyBudgets).forEach(k => {
                 const parts = k.split('-'); const catId = parts.slice(1).join('-');
-                const cat = cats.find(c=>c.id===catId);
+                const cat = App.resolveCategory(catId);
                 data.push({Periodo:parts[0],Tipo:'semanal',Rubro:cat?cat.name:catId,Limite:weeklyBudgets[k]});
             });
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Presupuesto');
@@ -2119,7 +2127,11 @@ const App = {
                                 : String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('transfer')?'transfer'
                                 : (String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('prest')||String(r.Tipo).replace(/[^\w]/g,'').toLowerCase().includes('pago'))?'loan_payment'
                                 : 'expense';
-                            const cat = cats.find(c=>c.name.toLowerCase()===((r.Rubro||'').toLowerCase()));
+                            let cat = cats.find(c=>c.name.toLowerCase()===((r.Rubro||'').toLowerCase()));
+                            if (!cat) {
+                                const cc = accounts.find(a=>a.type==='credit' && (r.Rubro||'').toLowerCase().includes(a.name.toLowerCase()));
+                                if (cc) cat = {id:'cc_'+cc.id, name:'💳 '+cc.name, type:'expense'};
+                            }
                             const acc = accounts.find(a=>a.name.toLowerCase()===((r.Cuenta||'').toLowerCase()));
                             tx.push({id:U.uid(), date:r.Fecha, type:cleanType, categoryId:cat?cat.id:'cat_'+cleanType, accountId:acc?acc.id:'', amount:r.Monto, description:r.Descripción||''});
                             imp++;
