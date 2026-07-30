@@ -1,0 +1,10 @@
+# Archivos solo de desarrollo — no se publican
+node_modules
+package.json
+serve.js
+tailwind.config.cjs
+tailwind.input.css
+ARQUITECTURA.md
+schema.sql
+*.log
+.DS_Store

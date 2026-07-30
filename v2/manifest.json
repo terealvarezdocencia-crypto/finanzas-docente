@@ -1,0 +1,51 @@
+{
+  "name": "Finanzas · Patrimonio Familiar",
+  "short_name": "Finanzas",
+  "description": "Aplicación de finanzas familiares y patrimoniales - Motor financiero real, privacidad total, offline-first",
+  "start_url": "./premium.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "lang": "es-MX",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Nuevo movimiento",
+      "short_name": "Movimiento",
+      "description": "Registrar ingreso, gasto o transferencia",
+      "url": "./index.html",
+      "icons": [{ "src": "./icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Ver presupuesto",
+      "short_name": "Presupuesto",
+      "description": "Revisar desviaciones del mes",
+      "url": "./index.html",
+      "icons": [{ "src": "./icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Vista premium",
+      "short_name": "Premium",
+      "description": "Dashboard ejecutivo",
+      "url": "./premium.html",
+      "icons": [{ "src": "./icon.svg", "sizes": "any" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
+}

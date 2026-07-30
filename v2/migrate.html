@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migración V1 → V2</title>
+<style>
+:root{--bg:#f7f5f3;--surface:#fff;--ink:#23202a;--muted:#8a8594;--line:#ece8ee;--accent:#5a3d4a;--green:#1f9d6b;--yellow:#c79a17;--red:#c84a4a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;padding:24px;max-width:820px;margin:0 auto}
+h1{font-size:1.2rem;margin-bottom:4px}
+p.sub{color:var(--muted);margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(35,32,42,.06)}
+.step{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px}
+button{font:inherit;font-weight:600;padding:9px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{font:inherit}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.report{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:14px 0}
+.metric{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}
+.metric b{display:block;font-size:1.4rem}
+.metric span{font-size:.72rem;color:var(--muted)}
+.warn{background:#fbf3da;border:1px solid #e9d79a;border-radius:10px;padding:12px;font-size:.82rem;color:#7a5e10;margin-top:10px}
+ul{margin:6px 0 0 18px}li{margin:2px 0;font-size:.8rem}
+pre{background:#1c1a22;color:#d8d4e0;border-radius:10px;padding:14px;overflow:auto;max-height:280px;font-size:.74rem;margin-top:12px}
+.ok{color:var(--green)}.bad{color:var(--red)}
+</style>
+</head>
+<body>
+<h1>Migración V1 → V2</h1>
+<p class="sub">Convierte tus datos de Finanzas V1 al nuevo modelo, reclasificando correctamente capital vs. crédito.</p>
+
+<div class="card">
+  <div class="step">Paso 1 · Origen de datos</div>
+  <div class="row">
+    <button id="btn-local" class="primary">Leer datos de este navegador</button>
+    <span class="muted">o</span>
+    <input type="file" id="file" accept=".json">
+    <span class="muted">(respaldo JSON exportado desde la V1)</span>
+  </div>
+  <p id="src-status" class="muted" style="margin-top:10px"></p>
+</div>
+
+<div class="card" id="preview-card" style="display:none">
+  <div class="step">Paso 2 · Vista previa de la migración</div>
+  <div class="report" id="report"></div>
+  <div id="warnings"></div>
+  <pre id="json-preview"></pre>
+</div>
+
+<div class="card" id="apply-card" style="display:none">
+  <div class="step">Paso 3 · Aplicar</div>
+  <p class="muted" style="margin-bottom:12px">Se guardará un respaldo de la V1 antes de escribir los datos V2.</p>
+  <div class="row">
+    <button id="btn-backup">Descargar respaldo V1</button>
+    <button id="btn-apply" class="primary">Escribir datos V2 y abrir la app</button>
+  </div>
+  <p id="apply-status" style="margin-top:10px"></p>
+</div>
+
+<script type="module">
+import { migrateV1toV2 } from './src/data/migrate.js';
+
+const V1_KEY = 'finanzas_app_v6';
+const V2_KEY = 'finanzas_v2';
+let v1raw = null, result = null;
+
+const $ = (id) => document.getElementById(id);
+
+function process(v1) {
+  try {
+    result = migrateV1toV2(v1);
+    v1raw = v1;
+    renderPreview();
+  } catch (e) {
+    $('src-status').innerHTML = '<span class="bad">Error: ' + e.message + '</span>';
+  }
+}
+
+$('btn-local').addEventListener('click', () => {
+  const raw = localStorage.getItem(V1_KEY);
+  if (!raw) {
+    $('src-status').innerHTML = '<span class="bad">No hay datos V1 en este navegador. Sube un respaldo JSON.</span>';
+    return;
+  }
+  $('src-status').innerHTML = '<span class="ok">Datos V1 encontrados en localStorage.</span>';
+  process(JSON.parse(raw));
+});
+
+$('file').addEventListener('change', (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { $('src-status').innerHTML = '<span class="ok">Respaldo cargado: ' + f.name + '</span>'; process(JSON.parse(r.result)); };
+  r.readAsText(f);
+});
+
+function renderPreview() {
+  const { data, report } = result;
+  $('preview-card').style.display = 'block';
+  $('apply-card').style.display = 'block';
+  $('report').innerHTML = [
+    ['Integrantes', report.members],
+    ['Cuentas', report.accounts],
+    ['Transacciones', report.transactions],
+    ['Líneas de crédito reclasificadas', report.reclassifiedCredit],
+  ].map(([l, v]) => `<div class="metric"><b>${v}</b><span>${l}</span></div>`).join('');
+
+  $('warnings').innerHTML = report.needsReview.length
+    ? `<div class="warn"><b>⚠ Revisar tasas estimadas</b> (la V1 no las guardaba):<ul>${report.needsReview.map(w => '<li>' + w + '</li>').join('')}</ul></div>`
+    : '';
+
+  $('json-preview').textContent = JSON.stringify(data, null, 2);
+}
+
+$('btn-backup').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(v1raw, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'respaldo-finanzas-v1-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+});
+
+$('btn-apply').addEventListener('click', () => {
+  localStorage.setItem(V2_KEY, JSON.stringify(result.data));
+  $('apply-status').innerHTML = '<span class="ok">✓ Datos V2 escritos. Abriendo la app…</span>';
+  setTimeout(() => { location.href = './index.html'; }, 900);
+});
+</script>
+</body>
+</html>

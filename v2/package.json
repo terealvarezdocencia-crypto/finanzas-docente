@@ -1,0 +1,53 @@
+{
+  "name": "finanzas-v2",
+  "version": "2.0.0",
+  "description": "Finanzas familiares y patrimoniales V2.0 - Motor financiero real, privacidad total, offline-first",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx http-server -p 3000 -c-1",
+    "start": "npx http-server -p 8080 -c-1",
+    "build": "echo 'Static site - no build step required' && exit 0",
+    "preview": "npm run build && npx http-server -p 4173",
+    "deploy": "vercel --prod",
+    "deploy:preview": "vercel",
+    "css": "tailwindcss -c tailwind.config.cjs -i tailwind.input.css -o premium.css --minify",
+    "css:watch": "tailwindcss -c tailwind.config.cjs -i tailwind.input.css -o premium.css --watch",
+    "lint": "echo 'No linter configured - vanilla JS/ESM'",
+    "test": "echo 'Tests: node --test src/**/*.test.js'",
+    "migrate": "echo 'Run migrate.html in browser to import V1 data'",
+    "sw:update": "echo 'Update sw.js version in CACHE_NAME constant'"
+  },
+  "keywords": [
+    "finance",
+    "personal-finance",
+    "family-budget",
+    "wealth-tracking",
+    "offline-first",
+    "pwa",
+    "fintech"
+  ],
+  "author": "Dra. Álvarez - Medicina Familiar 2026",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Safari versions",
+    "last 2 Edge versions"
+  ],
+  "vercel": {
+    "framework": "vanilla",
+    "buildCommand": "npm run build",
+    "devCommand": "npm run dev",
+    "installCommand": "npm install",
+    "outputDirectory": ".",
+    "functions": {
+      "src/**/*.js": {
+        "maxDuration": 30
+      }
+    }
+  }
+}

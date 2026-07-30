@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Finanzas V2 — Patrimonio</title>
+<meta name="theme-color" content="#020617">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Finanzas">
+<link rel="stylesheet" href="vendor/inter.css">
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/lucide.min.js"></script>
+<style>
+/* ===== Sistema de diseño premium (fintech) — claro/oscuro por tokens ===== */
+:root{
+  --bg:#f8fafc; --surface:#ffffff; --surface-2:#f8fafc; --ink:#0f172a; --muted:#64748b; --line:#eef1f6;
+  --income:#10b981; --expense:#fb7185; --invest:#8b5cf6;
+  --green:#10b981; --green-bg:rgba(16,185,129,.10);
+  --yellow:#c79a17; --yellow-bg:rgba(211,157,16,.12);
+  --red:#fb7185; --red-bg:rgba(251,113,133,.10);
+  --accent:#8b5cf6; --recv:#6366f1;
+  --r:1rem; --r-lg:1.5rem; --rs:.75rem;
+  --shadow:0 1px 2px rgba(15,23,42,.04),0 12px 32px -12px rgba(15,23,42,.10);
+  --shadow-lift:0 2px 4px rgba(15,23,42,.05),0 24px 48px -16px rgba(15,23,42,.18);
+}
+html.dark{
+  --bg:#020617; --surface:rgba(255,255,255,.04); --surface-2:rgba(255,255,255,.05); --ink:#e2e8f0; --muted:#94a3b8; --line:rgba(255,255,255,.10);
+  --green-bg:rgba(16,185,129,.15); --yellow-bg:rgba(211,157,16,.16); --red-bg:rgba(251,113,133,.15);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px -12px rgba(0,0,0,.55);
+  --shadow-lift:0 2px 4px rgba(0,0,0,.3),0 24px 48px -16px rgba(0,0,0,.65);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;transition:background .5s,color .5s}
+.tabnum,table{font-variant-numeric:tabular-nums}
+svg.lucide{width:18px;height:18px;stroke-width:2}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 35%,transparent);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+
+/* ===== Topbar ===== */
+.topbar{display:flex;align-items:center;gap:12px;padding:14px 22px;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.topbar h1{font-size:1.05rem;font-weight:800;letter-spacing:-.02em;margin-right:auto}
+.brand-badge{display:grid;place-items:center;width:40px;height:40px;border-radius:1rem;background:linear-gradient(135deg,var(--invest),var(--income));color:#fff;box-shadow:var(--shadow)}
+.member-select{appearance:none;cursor:pointer;padding:9px 14px;border:1px solid var(--line);border-radius:var(--rs);background:var(--surface);font-weight:600;color:var(--ink);box-shadow:var(--shadow)}
+.member-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.wrap{max-width:1120px;margin:0 auto;padding:26px 22px 48px}
+
+/* ===== KPI ===== */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:820px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:transform .35s cubic-bezier(.16,1,.3,1),box-shadow .35s}
+.kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-lift)}
+.kpi .label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.kpi .value{font-size:1.8rem;font-weight:800;letter-spacing:-.025em;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+.kpi .sub{font-size:.74rem;color:var(--muted)}
+.kpi::after{content:'';position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0}
+.kpi.green::after{background:var(--income)} .kpi.yellow::after{background:var(--yellow)} .kpi.red::after{background:var(--expense)}
+.kpi.green .value{color:var(--income)} .kpi.yellow .value{color:var(--yellow)} .kpi.red .value{color:var(--expense)}
+
+/* ===== Tabs (píldora) ===== */
+.tabs{display:flex;gap:6px;margin-bottom:24px;overflow-x:auto;padding-bottom:6px;border:none}
+.tab{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border:none;background:none;font-weight:600;font-size:.85rem;color:var(--muted);cursor:pointer;border-radius:.75rem;white-space:nowrap;transition:color .2s,background .2s}
+.tab svg{width:16px;height:16px}
+.tab:hover{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.tab.active{background:var(--ink);color:var(--bg)}
+.view{display:none}.view.active{display:block;animation:fadeUp .5s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+/* ===== Cards / tablas ===== */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:22px;margin-bottom:18px}
+.card h2{font-size:1rem;font-weight:700;letter-spacing:-.01em;margin-bottom:14px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:.875rem}
+th{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background .15s}
+tbody tr:hover{background:color-mix(in srgb,var(--ink) 3%,transparent)}
+td.num{text-align:right}
+.cell-green{background:var(--green-bg);color:var(--income);font-weight:700;border-radius:8px}
+.cell-yellow{background:var(--yellow-bg);color:var(--yellow);font-weight:700;border-radius:8px}
+.cell-red{background:var(--red-bg);color:var(--expense);font-weight:700;border-radius:8px}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:.7rem;font-weight:700}
+.pill.liquid{background:var(--green-bg);color:var(--income)}
+.pill.credit{background:var(--red-bg);color:var(--expense)}
+.pill.debt{background:var(--yellow-bg);color:var(--yellow)}
+.pill.recv{background:color-mix(in srgb,var(--recv) 12%,transparent);color:var(--recv)}
+.muted{color:var(--muted)}
+
+/* ===== Botones ===== */
+.btn{font:inherit;font-weight:600;padding:9px 15px;border:1px solid var(--line);border-radius:.75rem;background:var(--surface);color:var(--ink);cursor:pointer;font-size:.85rem;display:inline-flex;align-items:center;gap:7px;transition:transform .2s,box-shadow .2s,opacity .2s}
+.btn svg{width:16px;height:16px}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.btn.primary{background:var(--accent);color:#fff;border-color:transparent}
+.btn.primary:hover{opacity:.92}
+.btn.danger{color:var(--expense);border-color:color-mix(in srgb,var(--expense) 35%,transparent)}
+.btn.xs{padding:7px 12px;font-size:.78rem;border-radius:.6rem}
+.head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.head h2{margin:0;margin-right:auto}
+.icon-btn{display:grid;place-items:center;width:38px;height:38px;background:var(--surface);border:1px solid var(--line);cursor:pointer;color:var(--muted);font-size:.95rem;border-radius:.7rem;transition:.2s}
+.icon-btn svg{width:16px;height:16px}
+.icon-btn:hover{color:var(--ink);box-shadow:var(--shadow);transform:translateY(-1px)}
+.mode-switch{display:inline-flex;background:color-mix(in srgb,var(--muted) 14%,transparent);border-radius:.7rem;padding:3px}
+.mode-switch a{padding:7px 13px;border-radius:.55rem;font-size:.8rem;font-weight:600;color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:.2s}
+.mode-switch a svg{width:15px;height:15px}
+.mode-switch a.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+html.dark .mode-switch a.active{background:#1e293b;color:#fff}
+
+/* ===== Modal ===== */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(2,6,23,.5);backdrop-filter:blur(6px);z-index:50;align-items:center;justify-content:center;padding:18px}
+.modal-bg.open{display:flex;animation:fadeUp .25s ease}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:1.25rem;width:100%;max-width:480px;max-height:88vh;overflow:auto;box-shadow:var(--shadow-lift)}
+html.dark .modal{background:#0b1120}
+.modal header{display:flex;align-items:center;padding:18px 20px;border-bottom:1px solid var(--line)}
+.modal header h3{font-size:1.05rem;font-weight:700;margin-right:auto}
+.modal .body{padding:20px}
+.modal footer{display:flex;gap:8px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--line)}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:.75rem;font:inherit;background:var(--surface-2);color:var(--ink);transition:border-color .2s,box-shadow .2s}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.field.check{display:flex;align-items:center;gap:9px}
+.field.check input{width:auto;accent-color:var(--accent)}
+.field.check label{margin:0;text-transform:none;letter-spacing:0;font-size:.88rem;color:var(--ink)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input.inline{width:120px;padding:7px 10px;border:1px solid var(--line);border-radius:.6rem;font:inherit;text-align:right;background:var(--surface-2);color:var(--ink)}
+input.inline:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.empty{color:var(--muted);padding:22px 0;text-align:center}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand-badge"><i data-lucide="gem"></i></span>
+  <h1>Patrimonio</h1>
+  <select class="member-select" id="member-select"></select>
+  <button class="btn xs primary" data-action="member-add"><i data-lucide="plus"></i> Módulo</button>
+  <button class="icon-btn" data-action="member-del" title="Eliminar módulo"><i data-lucide="trash-2"></i></button>
+  <div class="mode-switch" title="Cambiar de modo">
+    <a href="premium.html"><i data-lucide="sparkles"></i>Simple</a>
+    <a href="index.html" class="active"><i data-lucide="sliders-horizontal"></i>Avanzado</a>
+  </div>
+  <button class="icon-btn" id="theme-toggle" title="Tema claro/oscuro"><i data-lucide="moon-star"></i></button>
+</div>
+
+<div class="wrap">
+  <!-- PANEL KPI EJECUTIVO -->
+  <section class="kpi-grid" id="kpi-grid"></section>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="dashboard"><i data-lucide="layout-dashboard"></i>Resumen</button>
+    <button class="tab" data-view="transactions"><i data-lucide="arrow-left-right"></i>Movimientos</button>
+    <button class="tab" data-view="accounts"><i data-lucide="wallet"></i>Cuentas</button>
+    <button class="tab" data-view="categories"><i data-lucide="tags"></i>Rubros</button>
+    <button class="tab" data-view="budget"><i data-lucide="clipboard-list"></i>Presupuesto</button>
+    <button class="tab" data-view="debt"><i data-lucide="trending-down"></i>Deuda Cero</button>
+    <button class="tab" data-view="projection"><i data-lucide="trending-up"></i>Proyección</button>
+    <button class="tab" data-view="tax"><i data-lucide="receipt"></i>Fiscal</button>
+    <button class="tab" data-view="business"><i data-lucide="store"></i>Negocio</button>
+    <button class="tab" data-view="data"><i data-lucide="database"></i>Datos</button>
+  </nav>
+
+  <section id="view-dashboard" class="view active">
+    <div class="card">
+      <div class="head"><h2>Balance mensual con semáforo</h2>
+        <button class="btn primary" data-action="tx-add">+ Movimiento</button></div>
+      <div id="monthly-balance"></div>
+    </div>
+  </section>
+
+  <section id="view-transactions" class="view">
+    <div class="card">
+      <div class="head"><h2>Movimientos</h2>
+        <button class="btn primary" data-action="tx-add">+ Movimiento</button></div>
+      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Rubro</th><th>Cuenta</th><th class="num">Monto</th><th></th></tr></thead>
+      <tbody id="tx-body"></tbody></table>
+    </div>
+  </section>
+
+  <section id="view-accounts" class="view">
+    <div class="card">
+      <div class="head"><h2>Cuentas (capital líquido vs. crédito, separados)</h2>
+        <button class="btn primary" data-action="acc-add">+ Cuenta</button></div>
+      <table><thead><tr><th>Cuenta</th><th>Clase</th><th class="num">Saldo</th><th></th></tr></thead>
+      <tbody id="accounts-body"></tbody></table>
+    </div>
+  </section>
+
+  <section id="view-categories" class="view">
+    <div class="card">
+      <div class="head"><h2>Rubros</h2>
+        <button class="btn primary" data-action="cat-add">+ Rubro</button></div>
+      <table><thead><tr><th>Rubro</th><th>Flujo</th><th>Deducible</th><th>Fijo</th><th></th></tr></thead>
+      <tbody id="cat-body"></tbody></table>
+    </div>
+  </section>
+
+  <section id="view-budget" class="view"><div class="card">
+    <div class="head"><h2>Presupuesto base + desviaciones</h2></div>
+    <p class="muted" style="margin-bottom:12px">Define el monto <b>base</b> una vez; cada mes solo ajustas la <b>desviación</b>. Edita en las celdas y se guarda solo.</p>
+    <div id="budget-body"></div>
+  </div></section>
+
+  <section id="view-debt" class="view"><div class="card"><h2>Desafío Deuda Cero</h2><div id="debt-body"></div></div></section>
+  <section id="view-projection" class="view"><div class="card"><h2>Proyección 1 · 3 · 5 años (compuesto + inflación)</h2><div id="projection-body"></div></div></section>
+  <section id="view-tax" class="view"><div class="card"><h2>Optimización fiscal — devolución estimada</h2><div id="tax-body"></div></div></section>
+  <section id="view-business" class="view"><div class="card"><h2>Acelerador Farmasi (punto de equilibrio + 50/50)</h2><div id="business-body"></div></div></section>
+
+  <section id="view-data" class="view">
+    <div class="card">
+      <div class="head"><h2>Excel</h2></div>
+      <p class="muted" style="margin-bottom:12px">Exporta para editar en Excel o respaldar; importa para cargar datos. La exportación incluye los <code>id</code> para reimportar sin perder referencias.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn primary" data-action="export-xlsx">📊 Exportar módulo actual (Excel)</button>
+        <button class="btn" data-action="export-all-xlsx">📚 Exportar todos los módulos (Excel)</button>
+        <button class="btn" data-action="import-xlsx">📥 Importar Excel</button>
+        <input type="file" id="xlsx-input" accept=".xlsx,.xls" style="display:none">
+      </div>
+    </div>
+    <div class="card">
+      <div class="head"><h2>Respaldo JSON</h2></div>
+      <p class="muted" style="margin-bottom:12px">Respaldo completo de la base de datos local (todos los módulos).</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" data-action="backup-json">🗂 Descargar respaldo JSON</button>
+        <button class="btn" data-action="restore-json">📂 Restaurar respaldo JSON</button>
+        <input type="file" id="json-input" accept=".json" style="display:none">
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Modal genérico (formularios dinámicos) -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <header><h3 id="modal-title">Formulario</h3><button class="icon-btn" data-action="modal-close">✕</button></header>
+    <form id="modal-form"><div class="body" id="modal-fields"></div>
+      <footer>
+        <button type="button" class="btn" data-action="modal-close">Cancelar</button>
+        <button type="submit" class="btn primary">Guardar</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="src/app/main.js"></script>
+</body>
+</html>
