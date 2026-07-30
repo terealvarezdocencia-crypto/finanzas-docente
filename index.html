@@ -690,16 +690,51 @@ const U = {
     },
     getBalance(id) {
         const acc = U.mod('accounts').find(a=>a.id===id);
+        const isLiability = acc && (acc.type === 'credit' || acc.type === 'debt');
         let bal = acc ? (acc.initialBalance||0) : 0;
         for (const t of U.mod('transactions')) {
             if (t.accountId === id) {
-                if (t.type==='income'||t.type==='debt') bal+=t.amount;
-                else if (t.type==='expense') bal-=t.amount;
-                else if (t.type==='saving') bal-=t.amount;
-                else if (t.type==='loan_payment') bal-=t.amount; // payment received reduces loan
+                if (isLiability) {
+                    // Cuentas de pasivo (crédito, deuda): lógica invertida
+                    if (t.type === 'expense' || t.type === 'debt') {
+                        // Gasto en tarjeta / disposición de crédito = DEBES MÁS
+                        bal += t.amount;
+                    } else if (t.type === 'loan_payment') {
+                        // Pago a tarjeta/préstamo = DEBES MENOS
+                        bal -= t.amount;
+                    } else if (t.type === 'income') {
+                        // Ingreso raro en pasivo (reembolso) = DEBES MENOS
+                        bal -= t.amount;
+                    } else if (t.type === 'saving') {
+                        // Ahorro desde pasivo = disposición de efectivo = DEBES MÁS
+                        bal += t.amount;
+                    } else if (t.type === 'transfer') {
+                        // Transferencia SALIENDO de pasivo = disposición = DEBES MÁS
+                        bal += t.amount;
+                    }
+                } else {
+                    // Cuentas de activo (efectivo, débito, ahorro, inversión): lógica normal
+                    if (t.type === 'income' || t.type === 'debt') bal += t.amount;
+                    else bal -= t.amount; // expense, saving, transfer, loan_payment salen
+                }
             }
-            if (t.type==='transfer'&&t.destAccountId) { if(t.accountId===id)bal-=t.amount; if(t.destAccountId===id)bal+=t.amount; }
-            if (t.type==='loan_payment'&&t.destAccountId) { if(t.accountId===id)bal-=t.amount; if(t.destAccountId===id)bal+=t.amount; }
+            if (t.destAccountId === id) {
+                if (isLiability) {
+                    // Dinero ENTRANDO a pasivo = pago = DEBES MENOS
+                    if (t.type === 'transfer' || t.type === 'loan_payment' || t.type === 'debt') {
+                        bal -= t.amount;
+                    } else if (t.type === 'income') {
+                        bal -= t.amount;
+                    }
+                } else {
+                    // Dinero ENTRANDO a activo = normal
+                    if (t.type === 'loan_payment') {
+                        bal -= t.amount; // abona (reduce) el pasivo destino
+                    } else {
+                        bal += t.amount; // transfer / saving / debt_draw
+                    }
+                }
+            }
         }
         return bal;
     },
