@@ -310,6 +310,16 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
       </div>
     </div>
     <p class="text-muted mb-10" id="budget-period-label">Periodo mensual actual</p>
+    
+    <!-- Navegador de meses (histórico 12 meses) -->
+    <div id="budget-month-nav" class="budget-nav" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-xs btn-o" id="budget-prev-month" onclick="App.budgetNavMonth(-1)" title="Mes anterior">‹ Ant</button>
+      <select class="fc" id="budget-month-select" onchange="App.budgetSelectMonth(this.value)" style="width:auto;min-width:160px"></select>
+      <button class="btn btn-xs btn-o" id="budget-next-month" onclick="App.budgetNavMonth(1)" title="Mes siguiente">Sig ›</button>
+      <span id="budget-history-badge" class="badge badge-saving" style="display:none;margin-left:8px">Vista histórica (solo lectura)</span>
+      <button class="btn btn-xs btn-p" id="budget-close-month" onclick="App.budgetCloseMonth()" style="margin-left:auto;display:none" title="Cierra el mes actual y guarda real vs presupuestado">✓ Cerrar mes</button>
+    </div>
+    
     <div class="chart-wrap mb-20"><canvas id="chart-budget"></canvas></div>
     <div class="table-wrap"><table><thead><tr><th>Rubro</th><th>Meta / Límite</th><th>Real</th><th>Progreso</th><th></th></tr></thead><tbody id="budget-list"></tbody></table></div>
   </div>
@@ -1586,14 +1596,205 @@ const App = {
         DB.set('budgetPeriod', period);
         document.getElementById('budget-period-monthly').className = 'btn btn-sm '+(period==='monthly'?'btn-p':'btn-o');
         document.getElementById('budget-period-weekly').className = 'btn btn-sm '+(period==='weekly'?'btn-p':'btn-o');
+        this.budgetViewMonth = null; // reset vista histórica al cambiar periodo
         this.renderBudget();
     },
 
+    // ---- Historial de presupuesto (últimos 12 meses) ----
+    getBudgetHistory() {
+        const data = DB.load();
+        return data.budgetHistory || {};
+    },
+    setBudgetHistory(history) {
+        const data = DB.load();
+        data.budgetHistory = history;
+        DB.save();
+    },
+    budgetViewMonth: null, // 'YYYY-MM' o null = mes actual
+
+    budgetNavMonth(delta) {
+        const current = this.budgetViewMonth || U.monthYear(U.today());
+        const [y, m] = current.split('-').map(Number);
+        let date = new Date(y, m - 1 + delta, 1);
+        const target = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+        this.budgetSelectMonth(target);
+    },
+    budgetSelectMonth(monthKey) {
+        const todayKey = U.monthYear(U.today());
+        const maxPast = 11; // 12 meses incluyendo actual
+        const [ty, tm] = todayKey.split('-').map(Number);
+        const oldest = new Date(ty, tm - maxPast, 1);
+        const targetDate = new Date(monthKey.split('-')[0], monthKey.split('-')[1] - 1, 1);
+        
+        if (targetDate < oldest) {
+            toast('Solo se muestran los últimos 12 meses','w');
+            return;
+        }
+        if (targetDate > new Date(ty, tm, 1)) {
+            toast('No hay datos de meses futuros','w');
+            return;
+        }
+        
+        this.budgetViewMonth = monthKey === todayKey ? null : monthKey;
+        this.renderBudget();
+        this.updateBudgetMonthUI();
+    },
+    updateBudgetMonthUI() {
+        const select = document.getElementById('budget-month-select');
+        const badge = document.getElementById('budget-history-badge');
+        const btnClose = document.getElementById('budget-close-month');
+        const isHistorical = !!this.budgetViewMonth;
+        
+        // Poblar select con últimos 12 meses
+        const todayKey = U.monthYear(U.today());
+        const [ty, tm] = todayKey.split('-').map(Number);
+        const options = [];
+        for (let i = 0; i <= 11; i++) {
+            const d = new Date(ty, tm - i, 1);
+            const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            const label = d.toLocaleDateString('es-MX', {month: 'long', year: 'numeric'});
+            options.push('<option value="'+key+'" '+(key === (this.budgetViewMonth || todayKey) ? 'selected' : '')+'>'+label+'</option>');
+        }
+        select.innerHTML = options.join('');
+        
+        if (isHistorical) {
+            badge.style.display = 'inline-block';
+            btnClose.style.display = 'none';
+            document.getElementById('budget-prev-month').disabled = false;
+            document.getElementById('budget-next-month').disabled = this.budgetViewMonth === todayKey;
+        } else {
+            badge.style.display = 'none';
+            btnClose.style.display = 'inline-block';
+            document.getElementById('budget-prev-month').disabled = false;
+            document.getElementById('budget-next-month').disabled = true;
+        }
+    },
+    budgetCloseMonth() {
+        const todayKey = U.monthYear(U.today());
+        const history = this.getBudgetHistory();
+        const budgets = U.mod('budgets') || {};
+        const weeklyBudgets = U.mod('weeklyBudgets') || {};
+        const tx = U.mod('transactions');
+        const periodExpenseTx = tx.filter(t=>t.type==='expense'&&U.monthYear(t.date)===todayKey);
+        const periodIncomeTx = tx.filter(t=>t.type==='income'&&U.monthYear(t.date)===todayKey);
+        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
+        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
+        
+        const snapshot = {
+            month: todayKey,
+            closedAt: new Date().toISOString(),
+            budgets: { ...budgets }, // base budgets at close time
+            actuals: {}
+        };
+        
+        // Guardar actuals por categoría
+        for (const c of expenseCats) {
+            const actual = periodExpenseTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
+            const budget = budgets[todayKey+'-'+c.id] || 0;
+            if (actual > 0 || budget > 0) {
+                snapshot.actuals[c.id] = { budget, actual };
+            }
+        }
+        for (const c of incomeCats) {
+            const actual = periodIncomeTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
+            const budget = budgets[todayKey+'-'+c.id] || 0;
+            if (actual > 0 || budget > 0) {
+                snapshot.actuals[c.id] = { budget, actual };
+            }
+        }
+        
+        history[todayKey] = snapshot;
+        this.setBudgetHistory(history);
+        
+        toast('Mes cerrado: '+todayKey+' — histórico guardado','s');
+        this.renderBudget();
+    },
+
+    // Renderizado de vista histórica (solo lectura)
+    renderBudgetHistorical(monthKey) {
+        const history = this.getBudgetHistory();
+        const snap = history[monthKey];
+        if (!snap) {
+            document.getElementById('budget-list').innerHTML = '<tr><td colspan="5" class="empty-state">No hay datos para '+monthKey+'</td></tr>';
+            document.getElementById('budget-period-label').textContent = 'Histórico: '+monthKey;
+            if (this.charts.budget) { this.charts.budget.destroy(); }
+            return;
+        }
+        
+        const cats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories(), ...U.mod('categories').filter(c=>c.type==='income')];
+        
+        document.getElementById('budget-period-label').textContent = 'Histórico: '+monthKey+' (cerrado '+U.fmtDate(snap.closedAt)+')';
+        
+        const rows = [];
+        for (const c of cats) {
+            const data = snap.actuals[c.id];
+            if (!data) continue;
+            const { budget, actual } = data;
+            const isExpense = c.type === 'expense';
+            const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
+            const color = isExpense ? (pct>90?'var(--d)':pct>70?'var(--w)':'var(--s)') : (pct>=100?'var(--mint)':pct>=75?'var(--sky)':pct>=50?'var(--cream)':'var(--pink)');
+            const icon = isExpense ? '💸' : '💰';
+            rows.push('<tr><td>'+icon+' '+c.name+'</td>'
+                +'<td>'+(budget>0?U.fmt(budget):'—')+'</td>'
+                +'<td style="font-weight:600;color:'+(isExpense?'var(--d)':'var(--mint)')+'">'+U.fmt(actual)+'</td>'
+                +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'—')+'</td>'
+                +'<td>—</td></tr>');
+        }
+        
+        document.getElementById('budget-list').innerHTML = rows.length 
+            ? '<tr style="background:#fdf8fe"><td colspan="5"><strong>Histórico cerrado — solo lectura</strong></td></tr>' + rows.join('')
+            : '<tr><td colspan="5" class="empty-state">Sin datos en este mes</td></tr>';
+        
+        // Gráfico histórico
+        this.renderBudgetChartHistorical(snap);
+    },
+    renderBudgetChartHistorical(snap) {
+        if (this.charts.budget) { this.charts.budget.destroy(); }
+        const ctx = document.getElementById('chart-budget');
+        if (!ctx) return;
+        
+        const cats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories(), ...U.mod('categories').filter(c=>c.type==='income')];
+        const labels = [], limitData = [], actualData = [], colors = [];
+        
+        for (const c of cats) {
+            const data = snap.actuals[c.id];
+            if (!data) continue;
+            labels.push((c.type==='expense'?'💸':'💰')+' '+c.name);
+            limitData.push(data.budget);
+            actualData.push(data.actual);
+            const pct = data.budget>0?Math.min(100,Math.round(data.actual/data.budget*100)):0;
+            const isExp = c.type==='expense';
+            colors.push(isExp ? (pct>90?'#FFB7B2':pct>70?'#FFF2CC':'#B5EAD7') : (pct>=100?'#B5EAD7':pct>=75?'#A8D8EA':'#FFD3B6'));
+        }
+        
+        if (labels.length === 0) {
+            Kawaii.budgetChart(ctx, { labels:['Sin datos'], datasets:[{ data:[1], backgroundColor:['#f0e8ee'] }] }, { plugins:{legend:{display:false}} });
+            return;
+        }
+        
+        this.charts.budget = Kawaii.budgetChart(ctx, {
+            labels, datasets:[
+                {label:'Presupuesto', data:limitData, backgroundColor:'#E0BBE4'},
+                {label:'Real', data:actualData, backgroundColor:colors}
+            ]
+        }, { plugins:{legend:{position:'bottom',labels:{font:{size:10}}}} });
+    },
+
+    // ===== RENDERBUDGET MODIFICADO =====
     renderBudget() {
         this.budgetPeriod = DB.get('budgetPeriod')||'monthly';
         document.getElementById('budget-period-monthly').className = 'btn btn-sm '+(this.budgetPeriod==='monthly'?'btn-p':'btn-o');
         document.getElementById('budget-period-weekly').className = 'btn btn-sm '+(this.budgetPeriod==='weekly'?'btn-p':'btn-o');
-
+        
+        // Si estamos en vista histórica mensual
+        if (this.budgetViewMonth && this.budgetPeriod === 'monthly') {
+            this.updateBudgetMonthUI();
+            this.renderBudgetHistorical(this.budgetViewMonth);
+            return;
+        }
+        
+        this.updateBudgetMonthUI();
+        
         const budgets = U.mod('budgets')||{};
         const weeklyBudgets = U.mod('weeklyBudgets')||{};
         const isWeekly = this.budgetPeriod==='weekly';
@@ -1605,38 +1806,40 @@ const App = {
         const periodTx = isWeekly ? tx : tx;
         const periodExpenseTx = tx.filter(t=>t.type==='expense'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
         const periodIncomeTx = tx.filter(t=>t.type==='income'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
-
+        
         document.getElementById('budget-period-label').textContent = 'Periodo '+(isWeekly?'semanal':'mensual')+' actual: '+periodKey;
-
+        
         const rowHtml = (c, type) => {
             const isExpense = type==='expense';
             const actual = isExpense
                 ? periodExpenseTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0)
                 : periodIncomeTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
             const budget = budgetSource[periodKey+'-'+c.id]||0;
+            const isHistorical = !!this.budgetViewMonth;
+            
             if (isExpense) {
                 const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
                 const color = pct>90?'var(--d)':pct>70?'var(--w)':'var(--s)';
                 return '<tr><td>💸 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin límite')+'</td>'
                     +'<td style="font-weight:600;color:var(--d)">'+U.fmt(actual)+'</td>'
-                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'-')+'</td>'
-                    +'<td><button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar')+'</button></td></tr>';
+                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'—')+'</td>'
+                    +'<td>'+(isHistorical?'—':'<button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar')+'</button>')+'</td></tr>';
             } else {
                 const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
                 const color = pct>=100?'var(--mint)':pct>=75?'var(--sky)':pct>=50?'var(--cream)':'var(--pink)';
-                const label = budget>0?'Meta: ':'Sin meta';
                 return '<tr style="background:linear-gradient(90deg,#f6fff8,#fff)"><td>💰 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin meta')+'</td>'
                     +'<td style="font-weight:600;color:var(--mint)">'+U.fmt(actual)+'</td>'
-                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'-')+'</td>'
-                    +'<td><button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar meta')+'</button></td></tr>';
+                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'—')+'</td>'
+                    +'<td>'+(isHistorical?'—':'<button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar meta')+'</button>')+'</td></tr>';
             }
         };
-
+        
         const expenseRows = expenseCats.map(c=>rowHtml(c,'expense')).join('');
         const incomeRows = incomeCats.map(c=>rowHtml(c,'income')).join('');
-
+        
         document.getElementById('budget-list').innerHTML = (incomeRows ? '<tr style="background:#fdf8fe"><td colspan="5"><strong>💰 Ingresos — Metas del periodo</strong></td></tr>'+incomeRows : '')
             + (expenseRows ? '<tr style="background:#fdf8fa"><td colspan="5"><strong>💸 Gastos — Límites del periodo</strong></td></tr>'+expenseRows : '');
+        
         this.renderBudgetChart(budgetSource, periodKey, expenseCats, incomeCats, periodExpenseTx, periodIncomeTx);
     },
 
