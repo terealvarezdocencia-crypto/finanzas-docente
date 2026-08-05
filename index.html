@@ -890,6 +890,7 @@ const App = {
 
     init() {
         DB.load();
+        this.migrateIcons();
         this.currentModule = DB.get('currentModule') || 'personal';
         this.renderNavTabs();
         this.bindEvents();
@@ -899,6 +900,27 @@ const App = {
         // Request notification permission and check credit reminders
         if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
         this.checkCreditNotifications();
+    },
+
+    verify() {
+        document.getElementById('verify-modal').classList.remove('active');
+        this.switchModule(this.currentModule);
+    },
+
+    migrateIcons() {
+        const data = DB.load();
+        let changed = false;
+        if (data.modulesList) {
+            for (const m of data.modulesList) {
+                if (m.icon && m.icon.includes('&#')) {
+                    const txt = document.createElement('textarea');
+                    txt.innerHTML = m.icon;
+                    m.icon = txt.value;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) DB.save();
     },
 
     verify() {
