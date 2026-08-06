@@ -1869,68 +1869,7 @@ const App = {
         }, { plugins:{legend:{position:'bottom',labels:{font:{size:10}}}} });
     },
 
-    // ===== RENDERBUDGET MODIFICADO =====
-    renderBudget() {
-        this.budgetPeriod = DB.get('budgetPeriod')||'monthly';
-        document.getElementById('budget-period-monthly').className = 'btn btn-sm '+(this.budgetPeriod==='monthly'?'btn-p':'btn-o');
-        document.getElementById('budget-period-weekly').className = 'btn btn-sm '+(this.budgetPeriod==='weekly'?'btn-p':'btn-o');
-        
-        // Si estamos en vista histórica mensual
-        if (this.budgetViewMonth && this.budgetPeriod === 'monthly') {
-            this.updateBudgetMonthUI();
-            this.renderBudgetHistorical(this.budgetViewMonth);
-            return;
-        }
-        
-        this.updateBudgetMonthUI();
-        
-        const budgets = U.mod('budgets')||{};
-        const weeklyBudgets = U.mod('weeklyBudgets')||{};
-        const isWeekly = this.budgetPeriod==='weekly';
-        const periodKey = isWeekly ? U.weekKey(U.today()) : U.monthYear(U.today());
-        const budgetSource = isWeekly ? weeklyBudgets : budgets;
-        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
-        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
-        const tx = U.mod('transactions');
-        const periodTx = isWeekly ? tx : tx;
-        const periodExpenseTx = tx.filter(t=>t.type==='expense'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
-        const periodIncomeTx = tx.filter(t=>t.type==='income'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
-        
-        document.getElementById('budget-period-label').textContent = 'Periodo '+(isWeekly?'semanal':'mensual')+' actual: '+periodKey;
-        
-        const rowHtml = (c, type) => {
-            const isExpense = type==='expense';
-            const actual = isExpense
-                ? periodExpenseTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0)
-                : periodIncomeTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
-            const budget = budgetSource[periodKey+'-'+c.id]||0;
-            const isHistorical = !!this.budgetViewMonth;
-            
-            if (isExpense) {
-                const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
-                const color = pct>90?'var(--d)':pct>70?'var(--w)':'var(--s)';
-                return '<tr><td>💸 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin límite')+'</td>'
-                    +'<td style="font-weight:600;color:var(--d)">'+U.fmt(actual)+'</td>'
-                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'—')+'</td>'
-                    +'<td>'+(isHistorical?'—':'<button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar')+'</button>')+'</td></tr>';
-            } else {
-                const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
-                const color = pct>=100?'var(--mint)':pct>=75?'var(--sky)':pct>=50?'var(--cream)':'var(--pink)';
-                return '<tr style="background:linear-gradient(90deg,#f6fff8,#fff)"><td>💰 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin meta')+'</td>'
-                    +'<td style="font-weight:600;color:var(--mint)">'+U.fmt(actual)+'</td>'
-                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'—')+'</td>'
-                    +'<td>'+(isHistorical?'—':'<button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar meta')+'</button>')+'</td></tr>';
-            }
-        };
-        
-        const expenseRows = expenseCats.map(c=>rowHtml(c,'expense')).join('');
-        const incomeRows = incomeCats.map(c=>rowHtml(c,'income')).join('');
-        
-        document.getElementById('budget-list').innerHTML = (incomeRows ? '<tr style="background:#fdf8fe"><td colspan="5"><strong>💰 Ingresos — Metas del periodo</strong></td></tr>'+incomeRows : '')
-            + (expenseRows ? '<tr style="background:#fdf8fa"><td colspan="5"><strong>💸 Gastos — Límites del periodo</strong></td></tr>'+expenseRows : '');
-        
-        this.renderBudgetChart(budgetSource, periodKey, expenseCats, incomeCats, periodExpenseTx, periodIncomeTx);
-    },
+    ,
 
     renderBudgetChart(budgetSource, periodKey, expenseCats, incomeCats, periodExpenseTx, periodIncomeTx) {
         if (this.charts.budget) { this.charts.budget.destroy(); }
