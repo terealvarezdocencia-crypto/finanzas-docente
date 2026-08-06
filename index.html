@@ -177,6 +177,81 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
 .tx-type-btn.selected{background:linear-gradient(135deg,#E0BBE4,#FFB7B2)!important;border-color:#d4a0b0!important;color:#5a3d4a!important;box-shadow:0 2px 10px rgba(224,187,228,.3)!important;transform:scale(1.03)}
 @keyframes sparkle{0%,100%{opacity:.3}50%{opacity:1}}
 .chart-wrap.kawaii-wrap{border-radius:22px;overflow:hidden;background:#fffaf5;border:2px solid #f0e0ea;padding:4px}
+
+/* ===== PRESUPUESTO GRID 12 MESES ===== */
+#budget-grid-table { table-layout: fixed; width: 100%; min-width: 1400px; }
+.budget-header-row th, .budget-subheader-row th { 
+    background: #f5f5f5; position: sticky; top: 0; z-index: 10;
+    font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+    padding: 6px 4px; text-align: center; border-bottom: 2px solid var(--b);
+}
+.budget-subheader-row th { background: #fafafa; font-size: .6rem; top: 22px; }
+.budget-col-cat { width: 180px; min-width: 180px; left: 0; z-index: 20; }
+.budget-col-type { width: 70px; min-width: 70px; left: 180px; z-index: 20; }
+.budget-month-group { 
+    background: linear-gradient(135deg, #fff, #fafafa); 
+    border-left: 1px solid #f0e6ec; border-right: 1px solid #f0e6ec;
+}
+.budget-month-group.budget-col-current { background: linear-gradient(135deg, #fff8f7, #fff); border-color: var(--pink); }
+.budget-sub-col { font-size: .55rem; padding: 2px; }
+
+.budget-grid-body tr { transition: background .15s; }
+.budget-grid-body tr:hover { background: #fdf8fa; }
+.budget-grid-body tr.budget-type-income { background: linear-gradient(90deg, #f6fff8 0%, transparent 100%); }
+.budget-grid-body tr.budget-type-income:hover { background: linear-gradient(90deg, #e8faf0 0%, transparent 100%); }
+.budget-grid-body tr.budget-type-expense { background: transparent; }
+
+.budget-cell-cat { position: sticky; left: 0; width: 180px; min-width: 180px; background: var(--c); z-index: 5; padding: 8px 10px; }
+.budget-cell-type { position: sticky; left: 180px; width: 70px; min-width: 70px; background: var(--c); z-index: 5; padding: 4px 6px; font-size: .65rem; color: var(--tm); text-align: center; }
+.budget-cat-icon { font-size: 1rem; margin-right: 6px; }
+.budget-cat-name { font-weight: 500; font-size: .8rem; }
+.budget-type-expense .budget-cell-type { color: var(--pink); }
+.budget-type-income .budget-cell-type { color: var(--mint); }
+
+.budget-cell-budget, .budget-cell-actual, .budget-cell-pct { padding: 6px 4px; text-align: center; }
+.budget-cell-budget.budget-col-current, .budget-cell-actual.budget-col-current, .budget-cell-pct.budget-col-current { background: #fff8f7; }
+
+.budget-input { 
+    padding: 4px 6px; border: 1px solid #e8d5e0; border-radius: 6px; 
+    font-size: .75rem; font-family: inherit; background: #fff; 
+    transition: border-color .2s, box-shadow .2s;
+}
+.budget-input:focus { outline: none; border-color: var(--lav); box-shadow: 0 0 0 3px rgba(224,187,228,.18); }
+.budget-input::placeholder { color: var(--tm); font-size: .7rem; }
+
+.budget-actual { font-variant-numeric: tabular-nums; }
+
+.budget-pct-cell { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.budget-mini-bar { 
+    width: 40px; height: 6px; border-radius: 3px; 
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.1);
+    transition: width .3s ease;
+}
+.budget-pct-cell span { font-size: .65rem; font-weight: 700; white-space: nowrap; }
+
+/* Responsive: en móvil ocultar tipo y reducir padding */
+@media (max-width: 768px) {
+    .budget-cell-type { display: none; }
+    .budget-col-cat { width: 140px; min-width: 140px; left: 0; }
+    .budget-col-type { display: none; }
+    .budget-cell-budget, .budget-cell-actual, .budget-cell-pct { padding: 4px 2px; }
+    .budget-input { width: 55px; font-size: .7rem; }
+    .budget-mini-bar { width: 30px; }
+}
+
+/* Botones del header */
+.budget-nav { flex-wrap: wrap; gap: 6px; }
+.budget-nav .btn-xs { padding: 5px 10px; font-size: .7rem; }
+
+/* Yearly summary table */
+#budget-yearly-summary table { font-size: .7rem; }
+#budget-yearly-summary th, #budget-yearly-summary td { padding: 6px 4px; }
+
+/* Badge histórico */
+#budget-history-badge { font-size: .6rem; padding: 2px 8px; }
+
+/* Botón llenar año */
+#budget-grid-table th.budget-col-current { background: #fff8f7; }
 </style>
 </head>
 <body>
@@ -303,25 +378,39 @@ body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;overscrol
 <!-- Budget -->
 <div id="sub-budget" class="sub-view">
   <div class="card">
-    <div class="card-h"><h2>Presupuesto</h2>
-      <div class="btn-group">
+    <div class="card-h"><h2>Presupuesto Anual (12 meses)</h2>
+      <div class="btn-group" style="margin-bottom:12px">
         <button class="btn btn-sm btn-o" id="budget-period-monthly" onclick="App.setBudgetPeriod('monthly')">Mensual</button>
         <button class="btn btn-sm btn-o" id="budget-period-weekly" onclick="App.setBudgetPeriod('weekly')">Semanal</button>
+        <button class="btn btn-sm btn-p" onclick="App.budgetFillYear()" title="Copiar presupuesto actual a todo el año">📅 Llenar año</button>
+        <button class="btn btn-sm btn-o" onclick="App.budgetExportCSV()" title="Exportar a Excel">📊 CSV</button>
       </div>
     </div>
-    <p class="text-muted mb-10" id="budget-period-label">Periodo mensual actual</p>
     
-    <!-- Navegador de meses (histórico 12 meses) -->
-    <div id="budget-month-nav" class="budget-nav" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn btn-xs btn-o" id="budget-prev-month" onclick="App.budgetNavMonth(-1)" title="Mes anterior">‹ Ant</button>
-      <select class="fc" id="budget-month-select" onchange="App.budgetSelectMonth(this.value)" style="width:auto;min-width:160px"></select>
-      <button class="btn btn-xs btn-o" id="budget-next-month" onclick="App.budgetNavMonth(1)" title="Mes siguiente">Sig ›</button>
-      <span id="budget-history-badge" class="badge badge-saving" style="display:none;margin-left:8px">Vista histórica (solo lectura)</span>
-      <button class="btn btn-xs btn-p" id="budget-close-month" onclick="App.budgetCloseMonth()" style="margin-left:auto;display:none" title="Cierra el mes actual y guarda real vs presupuestado">✓ Cerrar mes</button>
+    <p class="text-muted mb-10">Edita el presupuesto base por rubro y mes. El <b>Real</b> se calcula automático de tus transacciones. <span class="badge badge-saving">Editable cualquier mes</span></p>
+    
+    <div class="table-wrap" style="max-height:600px;overflow:auto">
+      <table id="budget-grid-table">
+        <thead>
+          <tr class="budget-header-row">
+            <th class="budget-col-cat" rowspan="2">Rubro</th>
+            <th class="budget-col-type" rowspan="2">Tipo</th>
+            <!-- 12 meses se inyectan por JS -->
+          </tr>
+          <tr class="budget-subheader-row">
+            <!-- Sub-headers: Presupuesto / Real / % -->
+          </tr>
+        </thead>
+        <tbody id="budget-grid-body"></tbody>
+      </table>
     </div>
     
-    <div class="chart-wrap mb-20"><canvas id="chart-budget"></canvas></div>
-    <div class="table-wrap"><table><thead><tr><th>Rubro</th><th>Meta / Límite</th><th>Real</th><th>Progreso</th><th></th></tr></thead><tbody id="budget-list"></tbody></table></div>
+    <div class="chart-wrap mb-20" style="margin-top:16px"><canvas id="chart-budget"></canvas></div>
+    
+    <details style="margin-top:16px">
+      <summary class="btn btn-xs btn-o" style="cursor:pointer">📊 Ver resumen anual (gráfico)</summary>
+      <div id="budget-yearly-summary" style="margin-top:12px"></div>
+    </details>
   </div>
 </div>
 
@@ -1903,12 +1992,419 @@ const App = {
         const isWeekly = document.getElementById('budget-period').value==='weekly';
         const periodKey = document.getElementById('budget-period-id').value;
         const amount = parseFloat(document.getElementById('budget-amount').value)||0;
+
+        // Si estamos en vista de grilla anual, permitir editar cualquier mes
+        const targetPeriod = this.budgetEditPeriod || periodKey;
         const key = isWeekly?'weeklyBudgets':'budgets';
         const budgets = U.mod(key)||{};
-        budgets[periodKey+'-'+catId] = amount;
+        budgets[targetPeriod+'-'+catId] = amount;
         U.modSet(key, budgets);
-        this.closeBudgetForm(); this.renderBudget();
+        this.closeBudgetForm(); 
+        this.renderBudget();
+        toast('Presupuesto guardado para '+targetPeriod,'s');
+    },
+
+    // ===== NUEVO: SISTEMA DE PRESUPUESTO GRID 12 MESES =====
+    
+    // Genera las 12 claves de meses (6 pasados + actual + 5 futuros)
+    getYearMonthKeys() {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth(); // 0-11
+        const keys = [];
+        const labels = [];
+        for (let i = -5; i <= 6; i++) { // 6 pasados, actual, 6 futuros = 12
+            const d = new Date(currentYear, currentMonth + i, 1);
+            const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            const label = d.toLocaleDateString('es-MX', {month: 'short', year: '2-digit'});
+            keys.push(key);
+            labels.push(label);
+        }
+        return { keys, labels };
+    },
+
+    // Construye la tabla grid completa
+    renderBudget() {
+        this.budgetPeriod = DB.get('budgetPeriod')||'monthly';
+        document.getElementById('budget-period-monthly').className = 'btn btn-sm '+(this.budgetPeriod==='monthly'?'btn-p':'btn-o');
+        document.getElementById('budget-period-weekly').className = 'btn btn-sm '+(this.budgetPeriod==='weekly'?'btn-p':'btn-o');
+        
+        const isWeekly = this.budgetPeriod==='weekly';
+        
+        // Si semanal, usar vista simple antigua
+        if (isWeekly) {
+            this.renderBudgetWeekly();
+            return;
+        }
+        
+        // VISTA MENSUAL: GRID 12 MESES
+        this.renderBudgetGrid();
+    },
+    
+    renderBudgetWeekly() {
+        // Vista semanal simple (código original simplificado)
+        const weeklyBudgets = U.mod('weeklyBudgets')||{};
+        const periodKey = U.weekKey(U.today());
+        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
+        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
+        const tx = U.mod('transactions');
+        const periodExpenseTx = tx.filter(t=>t.type==='expense'&&U.weekKey(t.date)===periodKey);
+        const periodIncomeTx = tx.filter(t=>t.type==='income'&&U.weekKey(t.date)===periodKey);
+        
+        document.getElementById('budget-period-label').textContent = 'Periodo semanal actual: '+periodKey;
+        
+        const rowHtml = (c, type) => {
+            const isExpense = type==='expense';
+            const actual = isExpense
+                ? periodExpenseTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0)
+                : periodIncomeTx.filter(t=>t.categoryId===c.id).reduce((s,t)=>s+t.amount,0);
+            const budget = (U.mod('weeklyBudgets')||{})[periodKey+'-'+c.id]||0;
+            
+            if (isExpense) {
+                const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
+                const color = pct>90?'var(--d)':pct>70?'var(--w)':'var(--s)';
+                return '<tr><td>💸 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin límite')+'</td>'
+                    +'<td style="font-weight:600;color:var(--d)">'+U.fmt(actual)+'</td>'
+                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'—')+'</td>'
+                    +'<td><button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar')+'</button></td></tr>';
+            } else {
+                const pct = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
+                const color = pct>=100?'var(--mint)':pct>=75?'var(--sky)':pct>=50?'var(--cream)':'var(--pink)';
+                return '<tr style="background:linear-gradient(90deg,#f6fff8,#fff)"><td>💰 '+c.name+'</td><td>'+(budget>0?U.fmt(budget):'Sin meta')+'</td>'
+                    +'<td style="font-weight:600;color:var(--mint)">'+U.fmt(actual)+'</td>'
+                    +'<td>'+(budget>0?'<div class="progress-bar"><div class="progress-fill" style="width:'+pct+'%;background:'+color+'"></div></div><small style="color:'+color+'">'+pct+'%</small>':'—')+'</td>'
+                    +'<td><button class="btn btn-xs btn-o" onclick="App.openBudgetForm(\''+c.id+'\')">'+(budget>0?'Editar':'Fijar meta')+'</button></td></tr>';
+            }
+        };
+        
+        const expenseRows = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()].map(c=>rowHtml(c,'expense')).join('');
+        const incomeRows = U.mod('categories').filter(c=>c.type==='income').map(c=>rowHtml(c,'income')).join('');
+        
+        document.getElementById('budget-list').innerHTML = (incomeRows ? '<tr style="background:#fdf8fe"><td colspan="5"><strong>💰 Ingresos — Metas del periodo</strong></td></tr>'+incomeRows : '')
+            + (expenseRows ? '<tr style="background:#fdf8fa"><td colspan="5"><strong>💸 Gastos — Límites del periodo</strong></td></tr>'+expenseRows : '');
+        
+        this.renderBudgetChartSimple() {
+        if (this.charts.budget) { this.charts.budget.destroy(); }
+        const ctx = document.getElementById('chart-budget');
+        if (!ctx) return;
+        
+        const budgets = U.mod('budgets')||{};
+        const weeklyBudgets = U.mod('weeklyBudgets')||{};
+        const isWeekly = this.budgetPeriod==='weekly';
+        const periodKey = isWeekly ? U.weekKey(U.today()) : U.monthYear(U.today());
+        const budgetSource = isWeekly ? weeklyBudgets : budgets;
+        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
+        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
+        const tx = U.mod('transactions');
+        const periodExpenseTx = tx.filter(t=>t.type==='expense'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
+        const periodIncomeTx = tx.filter(t=>t.type==='income'&&(isWeekly?U.weekKey(t.date)===periodKey:U.monthYear(t.date)===periodKey));
+        
+        const hasExpense = expenseCats.some(c=>budgetSource[periodKey+'-'+c.id]>0);
+        const hasIncome = incomeCats.some(c=>budgetSource[periodKey+'-'+c.id]>0);
+        if (!hasExpense && !hasIncome) { 
+            Kawaii.budgetChart(ctx, { labels:['Sin presupuestos'], datasets:[{ data:[1], backgroundColor:['#f0e8ee'] }] }, { plugins:{legend:{display:false}} }); 
+            return; 
+        }
+        const labels = [];
+        const limitData = [];
+        const actualData = [];
+        const colors = [];
+        if (hasIncome) {
+            incomeCats.filter(c=>budgetSource[periodKey+'-'+c.id]>0).forEach(c => {
+                labels.push('💰 '+c.name);
+                limitData.push(budgetSource[periodKey+'-'+c.id]);
+                const s = periodIncomeTx.filter(t=>t.categoryId===c.id).reduce((a,t)=>a+t.amount,0);
+                actualData.push(s);
+                const p = budgetSource[periodKey+'-'+c.id]>0?Math.min(100,Math.round(s/budgetSource[periodKey+'-'+c.id]*100)):0;
+                colors.push(p>=100?'#B5EAD7':p>=75?'#A8D8EA':'#FFD3B6');
+            });
+        }
+        if (hasExpense) {
+            expenseCats.filter(c=>budgetSource[periodKey+'-'+c.id]>0).forEach(c => {
+                labels.push('💸 '+c.name);
+                limitData.push(budgetSource[periodKey+'-'+c.id]);
+                const s = periodExpenseTx.filter(t=>t.categoryId===c.id).reduce((a,t)=>a+t.amount,0);
+                actualData.push(s);
+                const p = budgetSource[periodKey+'-'+c.id]>0?Math.min(100,Math.round(s/budgetSource[periodKey+'-'+c.id]*100)):0;
+                colors.push(p>90?'#FFB7B2':p>70?'#FFF2CC':'#B5EAD7');
+            });
+        }
+        this.charts.budget = Kawaii.budgetChart(ctx, {
+            labels, datasets:[ {label:'Meta / Límite',data:limitData,backgroundColor:'#E0BBE4'}, {label:'Real',data:actualData,backgroundColor:colors} ]
+        }, { plugins:{legend:{position:'bottom',labels:{font:{size:10}}}} });
+        setTimeout(kawaiiWrap, 50);
+    },
+
+    // Llenar año: copiar mes actual a todos
+    budgetFillYear() {
+        const { keys: monthKeys, labels: monthLabels } = this.getYearMonthKeys();
+        const budgets = U.mod('budgets') || {};
+        const tx = U.mod('transactions');
+        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
+        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
+        const allCats = [...expenseCats, ...incomeCats];
+        
+        // Calcular actuals por mes y categoría
+        const actuals = {}; // { monthKey: { catId: amount } }
+        for (const key of monthKeys) {
+            actuals[key] = {};
+            const monthTx = tx.filter(t => U.monthYear(t.date) === key);
+            const expTx = monthTx.filter(t => t.type === 'expense');
+            const incTx = monthTx.filter(t => t.type === 'income');
+            for (const c of expenseCats) {
+                actuals[key][c.id] = expTx.filter(t => t.categoryId === c.id).reduce((s,t)=>s+t.amount, 0);
+            }
+            for (const c of incomeCats) {
+                actuals[key][c.id] = incTx.filter(t => t.categoryId === c.id).reduce((s,t)=>s+t.amount, 0);
+            }
+        }
+        
+        // Construir headers
+        const headerRow = document.querySelector('.budget-header-row');
+        const subHeaderRow = document.querySelector('.budget-subheader-row');
+        
+        let headerHtml = '<th class="budget-col-cat" rowspan="2">Rubro</th><th class="budget-col-type" rowspan="2">Tipo</th>';
+        let subHeaderHtml = '';
+        
+        for (let i = 0; i < monthLabels.length; i++) {
+            const label = monthLabels[i];
+            const isCurrent = monthKeys[i] === U.monthYear(U.today());
+            const currentClass = isCurrent ? 'budget-col-current' : '';
+            headerHtml += '<th class="budget-month-group '+currentClass+'" colspan="3" data-month="'+monthKeys[i]+'">'+monthLabels[i]+'</th>';
+            subHeaderHtml += '<th class="budget-sub-col">Presup.</th><th class="budget-sub-col">Real</th><th class="budget-sub-col">%</th>';
+        }
+        
+        headerRow.innerHTML = headerHtml;
+        subHeaderRow.innerHTML = subHeaderHtml;
+        
+        // Filas por categoría
+        const allCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories(), ...U.mod('categories').filter(c=>c.type==='income')];
+        const tbody = document.getElementById('budget-grid-body');
+        
+        let rowsHtml = '';
+        const todayKey = U.monthYear(U.today());
+        
+        for (const c of allCats) {
+            const isExpense = c.type === 'expense';
+            const isCreditCard = c.id.startsWith('cc_');
+            const icon = isExpense ? (isCreditCard ? '💳' : '💸') : '💰';
+            const typeLabel = isExpense ? (isCreditCard ? 'Tarjeta' : 'Gasto') : 'Ingreso';
+            const typeClass = isExpense ? 'budget-type-expense' : 'budget-type-income';
+            
+            let rowHtml = '<tr class="'+typeClass+'" data-cat-id="'+c.id+'">';
+            rowHtml += '<td class="budget-cell-cat"><span class="budget-cat-icon">'+icon+'</span><span class="budget-cat-name">'+c.name+'</span></td>';
+            rowHtml += '<td class="budget-cell-type">'+typeLabel+'</td>';
+            
+            for (const monthKey of monthKeys) {
+                const budget = (U.mod('budgets')||{})[monthKey+'-'+c.id] || 0;
+                const actual = actuals[monthKey][c.id] || 0;
+                const pct = budget > 0 ? Math.min(100, Math.round(actual / budget * 100)) : 0;
+                const isCurrentMonth = monthKey === U.monthYear(U.today());
+                const canEdit = monthKey <= U.monthYear(U.today()); // Solo editar meses pasados/actual
+                
+                let pctColor = 'var(--s)';
+                if (isExpense) {
+                    pctColor = pct > 90 ? 'var(--d)' : pct > 70 ? 'var(--w)' : 'var(--s)';
+                } else {
+                    pctColor = pct >= 100 ? 'var(--mint)' : pct >= 75 ? 'var(--sky)' : pct >= 50 ? 'var(--cream)' : 'var(--pink)';
+                }
+                
+                // Celda Presupuesto (editable)
+                const budgetInput = canEdit 
+                    ? '<input type="number" class="budget-input" data-cat="'+c.id+'" data-month="'+monthKey+'" value="'+(budget>0?budget:'')+'" placeholder="0" min="0" step="100" style="width:70px;text-align:right" onchange="App.budgetGridSave(this)">'
+                    : (budget>0?U.fmt(budget):'—');
+                
+                // Celda Real
+                const actualHtml = actual > 0 
+                    ? '<span class="budget-actual" style="font-weight:600;color:'+(isExpense?'var(--d)':'var(--mint)')+'">'+U.fmt(actual)+'</span>'
+                    : '—';
+                
+                // Celda % con barra
+                const pctHtml = budget > 0 
+                    ? '<div class="budget-pct-cell"><div class="budget-mini-bar" style="background:'+pctColor+'" title="'+pct+'%"></div><span style="color:'+pctColor+'">'+pct+'%</span></div>'
+                    : '—';
+                
+                const currentClass = monthKey === U.monthYear(U.today()) ? ' budget-col-current' : '';
+                rowHtml += '<td class="budget-cell-budget'+currentClass+'">'+budgetInput+'</td>';
+                rowHtml += '<td class="budget-cell-actual'+currentClass+'">'+actualHtml+'</td>';
+                rowHtml += '<td class="budget-cell-pct'+currentClass+'">'+pctHtml+'</td>';
+            }
+            rowHtml += '</tr>';
+            rowsHtml += rowHtml;
+        }
+        
+        document.getElementById('budget-grid-body').innerHTML = rowsHtml;
+        
+        // Actualizar label
+        document.getElementById('budget-period-label').textContent = 'Presupuesto anual — Edita cualquier mes (pasado/actual). Futuro: solo base.';
+        
+        // Gráfico resumen anual
+        this.renderBudgetYearlyChart();
+        
+        // Resumen anual en details
+        this.renderYearlySummary();
+    },
+
+    // Guardar desde grid
+    budgetGridSave(input) {
+        const catId = input.dataset.cat;
+        const monthKey = input.dataset.month;
+        const amount = parseFloat(input.value) || 0;
+        const budgets = U.mod('budgets') || {};
+        budgets[monthKey+'-'+catId] = amount;
+        U.modSet('budgets', budgets);
+        
+        // Actualizar visual inmediato
+        const row = input.closest('tr');
+        const monthKeys = this.getYearMonthKeys().keys;
+        const catId2 = row.dataset.catId;
+        const actuals = {};
+        const tx = U.mod('transactions');
+        for (const key of monthKeys) {
+            const monthTx = tx.filter(t => U.monthYear(t.date) === key);
+            actuals[key] = monthTx.filter(t => t.type === 'expense' && t.categoryId === catId2).reduce((s,t)=>s+t.amount, 0);
+        }
+        
+        // Re-render solo esa fila (simplificado: re-render todo)
+        this.renderBudget();
         toast('Presupuesto guardado','s');
+    },
+
+    // Llenar año: copiar mes actual a todos
+    budgetFillYear() {
+        const currentKey = U.monthYear(U.today());
+        const budgets = U.mod('budgets') || {};
+        const currentBudgets = {};
+        for (const [key, val] of Object.entries(budgets)) {
+            if (key.startsWith(currentKey+'-')) {
+                currentBudgets[key.replace(currentKey+'-', '')] = val;
+            }
+        }
+        if (Object.keys(currentBudgets).length === 0) {
+            toast('No hay presupuesto en mes actual para copiar','w');
+            return;
+        }
+        
+        const { keys: monthKeys } = this.getYearMonthKeys();
+        for (const monthKey of monthKeys) {
+            for (const [catId, val] of Object.entries(currentBudgets)) {
+                budgets[monthKey+'-'+catId] = val;
+            }
+        }
+        U.modSet('budgets', budgets);
+        this.renderBudget();
+        toast('Presupuesto copiado a 12 meses','s');
+    },
+
+    // Exportar a CSV
+    budgetExportCSV() {
+        const { keys: monthKeys, labels: monthLabels } = this.getYearMonthKeys();
+        const allCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories(), ...U.mod('categories').filter(c=>c.type==='income')];
+        const budgets = U.mod('budgets') || {};
+        const tx = U.mod('transactions');
+        
+        let csv = 'Rubro,Tipo';
+        for (const label of monthLabels) csv += ',Presupuesto '+label+',Real '+label+',% '+label;
+        csv += '\n';
+        
+        for (const c of allCats) {
+            const isExpense = c.type === 'expense';
+            const icon = isExpense ? '💸' : '💰';
+            let row = '"'+c.name+'","'+(isExpense?'Gasto':'Ingreso')+'"';
+            for (const monthKey of monthKeys) {
+                const budget = budgets[monthKey+'-'+c.id] || 0;
+                const monthTx = tx.filter(t => U.monthYear(t.date) === monthKey && t.categoryId === c.id && t.type === (isExpense?'expense':'income'));
+                const actual = monthTx.reduce((s,t)=>s+t.amount, 0);
+                const pct = budget > 0 ? Math.round(actual / budget * 100) : 0;
+                row += ','+budget+','+actual+','+pct+'%';
+            }
+            csv += row + '\n';
+        }
+        
+        const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'presupuesto_anual_'+U.today()+'.csv';
+        a.click();
+        toast('CSV exportado','s');
+    },
+
+    // Gráfico resumen anual
+    renderBudgetYearlyChart() {
+        if (this.charts.budget) { this.charts.budget.destroy(); }
+        const ctx = document.getElementById('chart-budget');
+        if (!ctx) return;
+        
+        const { keys: monthKeys, labels: monthLabels } = this.getYearMonthKeys();
+        const budgets = U.mod('budgets') || {};
+        const tx = U.mod('transactions');
+        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
+        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
+        
+        const budgetTotals = [], actualTotals = [];
+        for (const monthKey of monthKeys) {
+            let bTotal = 0, aTotal = 0;
+            for (const c of expenseCats) {
+                bTotal += budgets[monthKey+'-'+c.id] || 0;
+                const monthTx = tx.filter(t => U.monthYear(t.date) === monthKey && t.categoryId === c.id && t.type === 'expense');
+                aTotal += monthTx.reduce((s,t)=>s+t.amount, 0);
+            }
+            budgetTotals.push(bTotal);
+            actualTotals.push(aTotal);
+        }
+        
+        this.charts.budget = Kawaii.budgetChart(ctx, {
+            labels: monthLabels,
+            datasets: [
+                {label:'Presupuesto', data:budgetTotals, backgroundColor:'#E0BBE4'},
+                {label:'Real', data:actualTotals, backgroundColor:'#FFB7B2'}
+            ]
+        }, { plugins:{legend:{position:'bottom',labels:{font:{size:10}}}} });
+        setTimeout(kawaiiWrap, 50);
+    },
+    
+    // Resumen anual en details
+    renderYearlySummary() {
+        const { keys: monthKeys } = this.getYearMonthKeys();
+        const budgets = U.mod('budgets') || {};
+        const tx = U.mod('transactions');
+        const expenseCats = [...U.mod('categories').filter(c=>c.type==='expense'), ...this.creditCardCategories()];
+        const incomeCats = U.mod('categories').filter(c=>c.type==='income');
+        
+        let html = '<table style="width:100%;font-size:.8rem"><thead><tr><th>Mes</th><th>Presup. Gasto</th><th>Real Gasto</th><th>% Gasto</th><th>Presup. Ingr.</th><th>Real Ingr.</th><th>% Ingr.</th><th>Ahorro</th></tr></thead><tbody>';
+        
+        for (const monthKey of monthKeys) {
+            let expBudget = 0, expActual = 0, incBudget = 0, incActual = 0;
+            for (const c of expenseCats) {
+                expBudget += budgets[monthKey+'-'+c.id] || 0;
+                const monthTx = tx.filter(t => U.monthYear(t.date) === monthKey && t.categoryId === c.id && t.type === 'expense');
+                expActual += monthTx.reduce((s,t)=>s+t.amount, 0);
+            }
+            for (const c of incomeCats) {
+                incBudget += budgets[monthKey+'-'+c.id] || 0;
+                const monthTx = tx.filter(t => U.monthYear(t.date) === monthKey && t.categoryId === c.id && t.type === 'income');
+                incActual += monthTx.reduce((s,t)=>s+t.amount, 0);
+            }
+            const expPct = expBudget > 0 ? Math.round(expActual / expBudget * 100) : 0;
+            const incPct = incBudget > 0 ? Math.round(incActual / incBudget * 100) : 0;
+            const ahorro = incActual - expActual;
+            
+            const monthLabel = new Date(monthKey+'-01').toLocaleDateString('es-MX', {month: 'long', year: 'numeric'});
+            const ahorroClass = ahorro >= 0 ? 'var(--mint)' : 'var(--d)';
+            
+            html += '<tr>'
+                +'<td>'+monthLabel+'</td>'
+                +'<td>'+U.fmt(expBudget)+'</td>'
+                +'<td style="color:var(--d)">'+U.fmt(expActual)+'</td>'
+                +'<td style="color:'+(expPct>90?'var(--d)':expPct>70?'var(--w)':'var(--s)')+'">'+expPct+'%</td>'
+                +'<td>'+U.fmt(incBudget)+'</td>'
+                +'<td style="color:var(--mint)">'+U.fmt(incActual)+'</td>'
+                +'<td style="color:'+(incPct>=100?'var(--mint)':incPct>=75?'var(--sky)':'var(--pink)')+'">'+incPct+'%</td>'
+                +'<td style="font-weight:600;color:'+ahorroClass+'">'+U.fmt(ahorro)+'</td>'
+                +'</tr>';
+        }
+        html += '</tbody></table>';
+        document.getElementById('budget-yearly-summary').innerHTML = html;
     },
 
     // ===== GOALS =====
